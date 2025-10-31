@@ -5,7 +5,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { auth, db } from '../firebase';
-import { addDoc, collection, serverTimestamp, Timestamp, getDocs, query, where } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, Timestamp, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
 import { COLOR_OPTIONS } from '../theme';
 import { COMPANY_ID } from '../firebase/firebaseConfig';
 
@@ -19,7 +19,7 @@ export default function TaskFormModal({ navigation }: Props) {
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
   const [showPicker, setShowPicker] = useState(false);
   const [selectAssigneeOpen, setSelectAssigneeOpen] = useState(false);
-  const [members, setMembers] = useState<{ uid: string; email: string }[]>([]);
+  const [members, setMembers] = useState<{ uid: string; email: string; name?: string }[]>([]);
   const [assignAll, setAssignAll] = useState(true);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
 
@@ -49,7 +49,7 @@ export default function TaskFormModal({ navigation }: Props) {
         assigneeUid = selectedUid;
       }
 
-      await addDoc(collection(db, 'tasks'), {
+      const taskRef = await addDoc(collection(db, 'tasks'), {
         title: title.trim(),
         description: description.trim() || '',
         color: selected.color,
@@ -63,6 +63,33 @@ export default function TaskFormModal({ navigation }: Props) {
         dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
         forAll,
       });
+
+      // Notificaciones: enviar a tokens de los participantes (excepto el creador)
+      try {
+        const tokens: string[] = [];
+        for (const uid of participants) {
+          if (uid === user.uid) continue;
+          const udoc = await getDoc(doc(db, 'users', uid));
+          const t = (udoc.data() as any)?.expoPushToken;
+          if (t) tokens.push(t);
+        }
+        if (tokens.length > 0) {
+          await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(tokens.map((to) => ({
+              to,
+              sound: 'default',
+              title: 'Nueva tarea',
+              body: title.trim(),
+              data: { taskId: taskRef.id },
+            })) as any),
+          });
+        }
+      } catch {}
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -107,7 +134,7 @@ export default function TaskFormModal({ navigation }: Props) {
 
       <Text style={{ marginTop: 16, marginBottom: 8 }}>Asignación</Text>
       <Button mode="outlined" onPress={() => setSelectAssigneeOpen(true)}>
-        {assignAll ? 'Para todos' : (members.find(m => m.uid === selectedUid)?.email || 'Elegir miembro')}
+        {assignAll ? 'Para todos' : (members.find(m => m.uid === selectedUid)?.name || members.find(m => m.uid === selectedUid)?.email || 'Elegir miembro')}
       </Button>
 
       <Portal>

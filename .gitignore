@@ -22,3 +22,6 @@ src/firebase/firebaseConfig.ts
 *.apk
 *.aab
 *.ipa
+
+# ARCHIVO FANTASMA
+NUL
