@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Checkbox, IconButton, Text, Dialog, Button, Portal } from 'react-native-paper';
+import { BRAND_COLORS } from '../theme';
 
 type Props = {
   title: string;
@@ -27,6 +28,7 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
     }
   };
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [deletePressed, setDeletePressed] = useState(false);
 
   const handleToggle = () => {
     if (done) {
@@ -46,8 +48,23 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, backgroundColor: done ? '#c8e6c9' : 'transparent', borderRadius: 8, marginVertical: 4 }}>
         <View style={{ width: 6, height: 40, backgroundColor: color, borderRadius: 4, marginRight: 8 }} />
         <Checkbox status={done ? 'checked' : 'unchecked'} onPress={handleToggle} />
-      <View style={{ flex: 1 }}>
-          <Text variant="titleMedium" style={{ textDecorationLine: done ? 'line-through' : 'none' }}>{title} {colorLabel ? `(${colorLabel})` : ''}</Text>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Text variant="titleMedium" style={{ textDecorationLine: done ? 'line-through' : 'none' }}>{title}</Text>
+            {colorLabel && (
+              <Text 
+                variant="titleMedium" 
+                style={{ 
+                  textDecorationLine: done ? 'line-through' : 'none',
+                  fontWeight: 'bold',
+                  color: color,
+                  marginLeft: 4
+                }}
+              >
+                ({colorLabel})
+              </Text>
+            )}
+          </View>
           {!!description && <Text variant="bodySmall" style={{ opacity: 0.7, marginTop: 2 }}>{description}</Text>}
           {!!(createdAt || dueDate || assignedToLabel) && (
             <View style={{ marginTop: 6 }}>
@@ -58,7 +75,25 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
           )}
           {done && <Text variant="bodySmall" style={{ color: '#2e7d32', fontWeight: '600', marginTop: 6 }}>Completado</Text>}
         </View>
-        {canDelete && <IconButton icon="delete" onPress={onDelete} />}
+        {canDelete && (
+          <TouchableOpacity
+            onPressIn={() => setDeletePressed(true)}
+            onPressOut={() => {
+              setDeletePressed(false);
+              onDelete();
+            }}
+            style={[
+              styles.deleteButton,
+              deletePressed && styles.deleteButtonPressed
+            ]}
+            activeOpacity={0.7}
+          >
+            <IconButton 
+              icon="delete" 
+              iconColor={deletePressed ? BRAND_COLORS.primary : undefined}
+            />
+          </TouchableOpacity>
+        )}
       </View>
       <Portal>
         <Dialog visible={showConfirmDialog} onDismiss={() => setShowConfirmDialog(false)}>
@@ -75,5 +110,15 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  deleteButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  deleteButtonPressed: {
+    backgroundColor: BRAND_COLORS.primary + '20', // 20% opacity
+  },
+});
 
 

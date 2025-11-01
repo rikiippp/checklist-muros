@@ -74,7 +74,7 @@ export default function TaskFormModal({ navigation }: Props) {
           if (t) tokens.push(t);
         }
         if (tokens.length > 0) {
-          await fetch('https://exp.host/--/api/v2/push/send', {
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
             method: 'POST',
             headers: {
               'Accept': 'application/json',
@@ -88,8 +88,15 @@ export default function TaskFormModal({ navigation }: Props) {
               data: { taskId: taskRef.id },
             })) as any),
           });
+          const result = await response.json();
+          if (__DEV__) {
+            console.log('Notificaciones enviadas:', result);
+          }
         }
-      } catch {}
+      } catch (error) {
+        // Log del error para debugging, pero no bloquear el flujo
+        console.warn('Error al enviar notificaciones:', error);
+      }
       navigation.goBack();
     } finally {
       setLoading(false);

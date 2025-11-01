@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Image } from 'react-native';
-import { Button, TextInput, Text } from 'react-native-paper';
+import { Button, TextInput, Text, Dialog, Portal } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -16,6 +16,7 @@ export default function RegisterScreen({ navigation }: Props) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
 
   const onRegister = async () => {
     setLoading(true);
@@ -30,18 +31,30 @@ export default function RegisterScreen({ navigation }: Props) {
         role: 'user',
         createdAt: new Date().toISOString(),
       });
-      navigation.replace('Tasks');
+      
+      // Cerrar sesión para que el usuario entre con sus credenciales
+      await auth.signOut();
+      
+      // Mostrar modal de éxito
+      setShowSuccessDialog(true);
+      setLoading(false);
+      
+      // Esperar 2.5 segundos antes de redirigir al login
+      setTimeout(() => {
+        setShowSuccessDialog(false);
+        navigation.replace('Login');
+      }, 4500);
     } catch (e: any) {
       setError(e?.message || 'Error al crear cuenta');
-    } finally {
       setLoading(false);
     }
   };
 
   return (
     <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
+      {/* Logo en register - mismo tamaño que login */}
       {/* @ts-ignore */}
-      <Image source={require('../../assets/logo.png')} style={{ width: 140, height: 140, alignSelf: 'center', marginBottom: 12 }} resizeMode="contain" />
+      <Image source={require('../../assets/logo.png')} style={{ width: 160, height: 160, alignSelf: 'center', marginBottom: 12 }} resizeMode="contain" />
       <Text variant="headlineMedium" style={{ marginBottom: 16, textAlign: 'center' }}>Crear cuenta</Text>
       <TextInput label="Nombre" value={name} onChangeText={setName} style={{ marginBottom: 12 }} />
       {!!error && <Text style={{ color: 'red', marginBottom: 8 }}>{error}</Text>}
@@ -50,6 +63,22 @@ export default function RegisterScreen({ navigation }: Props) {
       <Button mode="contained" onPress={onRegister} loading={loading} disabled={loading}>
         Registrarme
       </Button>
+      <Button onPress={() => navigation.navigate('Login')} style={{ marginTop: 8 }}>
+        Ya tengo cuenta - Iniciar sesión
+      </Button>
+      
+      {/* Modal de éxito */}
+      <Portal>
+        <Dialog visible={showSuccessDialog} dismissable={false}>
+          <Dialog.Icon icon="check-circle" size={64} color="#4caf50" />
+          <Dialog.Title style={{ textAlign: 'center' }}>¡Cuenta creada exitosamente!</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium" style={{ textAlign: 'center' }}>
+              Tu cuenta ha sido creada correctamente. Serás redirigido al inicio de sesión para que puedas ingresar con tus credenciales.
+            </Text>
+          </Dialog.Content>
+        </Dialog>
+      </Portal>
     </View>
   );
 }

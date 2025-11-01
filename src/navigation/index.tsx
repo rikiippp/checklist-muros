@@ -27,7 +27,7 @@ export default function RootNavigator() {
       <Stack.Navigator initialRouteName={user ? 'Tasks' : 'Login'}>
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Crear cuenta' }} />
-        <Stack.Screen name="Tasks" component={TaskListScreen} options={{ title: 'Tareas' }} />
+        <Stack.Screen name="Tasks" component={TaskListScreen} options={{ headerShown: false }} />
         <Stack.Screen name="CompletedTasks" component={CompletedTasksScreen} options={{ title: 'Tareas Completadas' }} />
         <Stack.Screen name="Team" component={TeamScreen} options={{ title: 'Mi equipo' }} />
         <Stack.Group screenOptions={{ presentation: 'modal' }}>

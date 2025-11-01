@@ -1,13 +1,12 @@
 export const firebaseConfig = {
-    apiKey: "AIzaSyAHClVD9a39OPemJulKF-kTP7pNNa37r18",
-    authDomain: "muros-checklist.firebaseapp.com",
-    projectId: "muros-checklist",
-    storageBucket: "muros-checklist.firebasestorage.app",
-    messagingSenderId: "747167088223",
-    appId: "1:747167088223:web:728ab217ea37bfe33225ea"
+    apiKey: "TU_API_KEY_AQUI",
+    authDomain: "tu-proyecto.firebaseapp.com",
+    projectId: "tu-proyecto-id",
+    storageBucket: "tu-proyecto.firebasestorage.app",
+    messagingSenderId: "123456789012",
+    appId: "1:123456789012:web:abcdef1234567890"
 };
 
 // Identificador simple para agrupar tareas por empresa
-export const COMPANY_ID = "muros";
-
+export const COMPANY_ID = "nombre-empresa";
 
