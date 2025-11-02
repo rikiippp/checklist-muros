@@ -28,7 +28,16 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid == uid;
+      // Permitir que el usuario actualice su propio documento
       allow update, delete: if request.auth != null && request.auth.uid == uid;
+      // Permitir que los administradores actualicen roles de otros usuarios en su compañía
+      allow update: if request.auth != null 
+        && uid != request.auth.uid
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == 
+           get(/databases/$(database)/documents/users/$(uid)).data.companyId;
     }
     match /tasks/{taskId} {
       allow read, write: if request.auth != null;
@@ -36,6 +45,8 @@ service cloud.firestore {
   }
 }
 ```
+
+**IMPORTANTE:** Después de actualizar las reglas en Firebase Console, espera unos segundos para que se apliquen. Si ves errores de permisos, verifica que tu usuario tenga `role: "admin"` en Firestore.
 4. Índices sugeridos para `tasks`:
    - `companyId` Asc, `done` Asc, `createdAt` Desc
    - Si la consola sugiere otro índice, créalo con el enlace que provee.

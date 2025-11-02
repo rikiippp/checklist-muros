@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Checkbox, IconButton, Text, Dialog, Button, Portal } from 'react-native-paper';
-import { BRAND_COLORS } from '../theme';
+import { BRAND_COLORS } from '../theme.ts';
 
 type Props = {
   title: string;
@@ -27,7 +27,24 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
       return '';
     }
   };
+
+  // Verificar si la tarea está vencida (fecha límite es hoy o ya pasó, y no está completada)
+  const isOverdue = (() => {
+    if (!dueDate || done) return false;
+    try {
+      const deadline = typeof dueDate.toDate === 'function' ? dueDate.toDate() : new Date(dueDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const deadlineDate = new Date(deadline);
+      deadlineDate.setHours(0, 0, 0, 0);
+      return deadlineDate <= today;
+    } catch {
+      return false;
+    }
+  })();
+
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePressed, setDeletePressed] = useState(false);
 
   const handleToggle = () => {
@@ -43,9 +60,28 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
     onToggleDone();
   };
 
+  const handleDelete = () => {
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = () => {
+    setShowDeleteDialog(false);
+    onDelete();
+  };
+
   return (
     <>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, backgroundColor: done ? '#c8e6c9' : 'transparent', borderRadius: 8, marginVertical: 4 }}>
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+        backgroundColor: done ? '#c8e6c9' : (isOverdue ? '#ffebee' : 'transparent'),
+        borderRadius: 8,
+        marginVertical: 4,
+        borderWidth: isOverdue && !done ? 2 : 0,
+        borderColor: isOverdue && !done ? '#f44336' : 'transparent'
+      }}>
         <View style={{ width: 6, height: 40, backgroundColor: color, borderRadius: 4, marginRight: 8 }} />
         <Checkbox status={done ? 'checked' : 'unchecked'} onPress={handleToggle} />
         <View style={{ flex: 1 }}>
@@ -69,7 +105,19 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
           {!!(createdAt || dueDate || assignedToLabel) && (
             <View style={{ marginTop: 6 }}>
               {!!createdAt && <Text variant="bodySmall" style={{ opacity: 0.7 }}>Creada: {formatDate(createdAt)}</Text>}
-              {!!dueDate && <Text variant="bodySmall" style={{ opacity: 0.7 }}>Límite: {formatDate(dueDate)}</Text>}
+              {!!dueDate && (
+                <Text 
+                  variant="bodySmall" 
+                  style={{ 
+                    opacity: 0.7,
+                    color: isOverdue && !done ? '#d32f2f' : undefined,
+                    fontWeight: isOverdue && !done ? 'bold' : undefined
+                  }}
+                >
+                  Límite: {formatDate(dueDate)}
+                  {isOverdue && !done && ' ⚠️ VENCIDA'}
+                </Text>
+              )}
               {!!assignedToLabel && <Text variant="bodySmall" style={{ opacity: 0.7 }}>Asignada a: {assignedToLabel}</Text>}
             </View>
           )}
@@ -80,7 +128,7 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
             onPressIn={() => setDeletePressed(true)}
             onPressOut={() => {
               setDeletePressed(false);
-              onDelete();
+              handleDelete();
             }}
             style={[
               styles.deleteButton,
@@ -96,6 +144,7 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
         )}
       </View>
       <Portal>
+        {/* Diálogo de confirmación para desmarcar tarea */}
         <Dialog visible={showConfirmDialog} onDismiss={() => setShowConfirmDialog(false)}>
           <Dialog.Title>Desmarcar tarea</Dialog.Title>
           <Dialog.Content>
@@ -104,6 +153,18 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
           <Dialog.Actions>
             <Button onPress={() => setShowConfirmDialog(false)}>Cancelar</Button>
             <Button onPress={confirmUncheck}>Sí, desmarcar</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* Diálogo de confirmación para eliminar tarea */}
+        <Dialog visible={showDeleteDialog} onDismiss={() => setShowDeleteDialog(false)}>
+          <Dialog.Title>Eliminar tarea</Dialog.Title>
+          <Dialog.Content>
+            <Text>¿Estás seguro de que deseas eliminar esta tarea? Esta acción no se puede deshacer.</Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowDeleteDialog(false)}>Cancelar</Button>
+            <Button onPress={confirmDelete} textColor="#d32f2f">Sí, eliminar</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>

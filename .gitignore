@@ -15,8 +15,11 @@ yarn-error.log*
 Thumbs.db
 
 # Env/credentials (no subir claves)
-*.env
-src/firebase/firebaseConfig.ts
+.env
+.env.local
+.env.production
+# Mantener .env.example en el repo para referencia
+# El archivo firebaseConfig.ts ahora usa variables de entorno, así que puede estar en el repo
 
 # Expo artifacts
 *.apk

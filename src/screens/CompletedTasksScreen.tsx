@@ -2,12 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { Appbar, Text } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation';
-import { auth, db } from '../firebase';
+import { RootStackParamList } from '../navigation/index.tsx';
+import { auth, db } from '../firebase/index.ts';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where, getDoc, onSnapshot as onSnapshotUsers } from 'firebase/firestore';
-import TaskItem from '../components/TaskItem';
-import { COLOR_LABELS } from '../theme';
-import { COMPANY_ID } from '../firebase/firebaseConfig';
+import TaskItem from '../components/TaskItem.tsx';
+import { COLOR_LABELS } from '../theme.ts';
+import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CompletedTasks'>;
 

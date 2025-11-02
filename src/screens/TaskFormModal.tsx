@@ -3,11 +3,12 @@ import { View } from 'react-native';
 import { Button, TextInput, Text, Chip, Dialog, Portal, Checkbox } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation';
-import { auth, db } from '../firebase';
+import { RootStackParamList } from '../navigation/index.tsx';
+import { auth, db } from '../firebase/index.ts';
 import { addDoc, collection, serverTimestamp, Timestamp, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { COLOR_OPTIONS } from '../theme';
-import { COMPANY_ID } from '../firebase/firebaseConfig';
+import { COLOR_OPTIONS } from '../theme.ts';
+import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
+import { scheduleNotificationsForTask } from '../services/taskNotifications.ts';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TaskForm'>;
 
@@ -49,6 +50,8 @@ export default function TaskFormModal({ navigation }: Props) {
         assigneeUid = selectedUid;
       }
 
+      const dueDateTimestamp = dueDate ? Timestamp.fromDate(dueDate) : null;
+      
       const taskRef = await addDoc(collection(db, 'tasks'), {
         title: title.trim(),
         description: description.trim() || '',
@@ -60,9 +63,18 @@ export default function TaskFormModal({ navigation }: Props) {
         createdBy: user.uid,
         participants,
         createdAt: serverTimestamp(),
-        dueDate: dueDate ? Timestamp.fromDate(dueDate) : null,
+        dueDate: dueDateTimestamp,
         forAll,
       });
+
+      // Programar notificaciones de fecha límite si hay dueDate
+      if (dueDateTimestamp) {
+        try {
+          await scheduleNotificationsForTask(taskRef.id, title.trim(), dueDateTimestamp, false);
+        } catch (error) {
+          console.warn('Error al programar notificaciones de fecha límite:', error);
+        }
+      }
 
       // Notificaciones: enviar a tokens de los participantes (excepto el creador)
       try {

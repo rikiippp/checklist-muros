@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { firebaseConfig } from './firebaseConfig';
+import { firebaseConfig } from './firebaseConfig.ts';
 
 // Carga perezosa de dependencias para evitar errores de tipos en RN
 let getReactNativePersistence: any;

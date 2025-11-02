@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { View, Image } from 'react-native';
 import { Button, TextInput, Text } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation';
+import { RootStackParamList } from '../navigation/index.tsx';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth } from '../firebase/index.ts';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 

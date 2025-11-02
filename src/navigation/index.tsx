@@ -1,13 +1,13 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import LoginScreen from '../screens/LoginScreen';
-import RegisterScreen from '../screens/RegisterScreen';
-import TaskListScreen from '../screens/TaskListScreen';
-import TaskFormModal from '../screens/TaskFormModal';
-import CompletedTasksScreen from '../screens/CompletedTasksScreen';
-import { auth } from '../firebase';
-import TeamScreen from '../screens/TeamScreen';
+import LoginScreen from '../screens/LoginScreen.tsx';
+import RegisterScreen from '../screens/RegisterScreen.tsx';
+import TaskListScreen from '../screens/TaskListScreen.tsx';
+import TaskFormModal from '../screens/TaskFormModal.tsx';
+import CompletedTasksScreen from '../screens/CompletedTasksScreen.tsx';
+import { auth } from '../firebase/index.ts';
+import TeamScreen from '../screens/TeamScreen.tsx';
 
 export type RootStackParamList = {
   Login: undefined;

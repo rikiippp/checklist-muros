@@ -4,13 +4,14 @@ import { Appbar, Button, FAB, Text } from 'react-native-paper';
 import { Alert } from 'react-native';
 import { Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation';
-import { auth, db } from '../firebase';
+import { RootStackParamList } from '../navigation/index.tsx';
+import { auth, db } from '../firebase/index.ts';
 import type { User } from 'firebase/auth';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, addDoc, getDoc, onSnapshot as onSnapshotUsers } from 'firebase/firestore';
-import TaskItem from '../components/TaskItem';
-import { COLOR_LABELS, BRAND_COLORS } from '../theme';
-import { COMPANY_ID } from '../firebase/firebaseConfig';
+import TaskItem from '../components/TaskItem.tsx';
+import { COLOR_LABELS, BRAND_COLORS } from '../theme.ts';
+import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
+import { scheduleNotificationsForTask } from '../services/taskNotifications.ts';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Tasks'>;
 
@@ -60,7 +61,7 @@ export default function TaskListScreen({ navigation }: Props) {
       where('done', '==', false),
       orderBy('createdAt', 'desc')
     );
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, async (snap) => {
       const items: Task[] = [];
       snap.forEach((d) => {
         const data = d.data() as any;
@@ -74,6 +75,21 @@ export default function TaskListScreen({ navigation }: Props) {
         }
       });
       setTasks(items);
+      
+      // Programar notificaciones para todas las tareas pendientes con fecha límite
+      // (solo para las tareas que el usuario puede ver)
+      for (const task of items) {
+        if (!task.done && task.dueDate) {
+          try {
+            await scheduleNotificationsForTask(task.id, task.title, task.dueDate, false);
+          } catch (error) {
+            // Silenciar errores de notificaciones, no bloquear el flujo
+            if (__DEV__) {
+              console.warn(`Error al programar notificaciones para tarea ${task.id}:`, error);
+            }
+          }
+        }
+      }
     });
     
     // Si hay una tarea siendo completada, mantenerla en la lista hasta que termine el delay
@@ -89,11 +105,23 @@ export default function TaskListScreen({ navigation }: Props) {
       // Esperar 2 segundos antes de actualizar para que se vea la animación
       setTimeout(async () => {
         await updateDoc(doc(db, 'tasks', task.id), { done: true });
+        // Cancelar notificaciones cuando la tarea se marca como completada
+        try {
+          await scheduleNotificationsForTask(task.id, task.title, task.dueDate, true);
+        } catch (error) {
+          console.warn('Error al cancelar notificaciones:', error);
+        }
         setCompletingTaskId(null);
         setCompletingTask(null);
       }, 2000);
     } else {
       await updateDoc(doc(db, 'tasks', task.id), { done: false });
+      // Reprogramar notificaciones si la tarea se desmarca y tiene fecha límite
+      try {
+        await scheduleNotificationsForTask(task.id, task.title, task.dueDate, false);
+      } catch (error) {
+        console.warn('Error al reprogramar notificaciones:', error);
+      }
     }
   };
 
@@ -223,15 +251,22 @@ export default function TaskListScreen({ navigation }: Props) {
       )}
       <FAB 
         icon="plus" 
-        style={{ position: 'absolute', right: 16, bottom: 16 }} 
+        style={{ 
+          position: 'absolute', 
+          right: 16, 
+          bottom: 30, 
+          zIndex: 10,
+          backgroundColor: BRAND_COLORS.primary 
+        }} 
         onPress={() => navigation.navigate('TaskForm')}
         color="#FFFFFF"
+        size="medium"
       />
       {/* Logo centrado abajo - no interfiere con toques */}
       {/* @ts-ignore */}
       <Image
         source={require('../../assets/logo.png')}
-        style={{ position: 'absolute', alignSelf: 'center', bottom: -10, width: 200, height: 200 }}
+        style={{ position: 'absolute', alignSelf: 'center', bottom: -40, width: 200, height: 200 }}
         resizeMode="contain"
       />
     </View>
