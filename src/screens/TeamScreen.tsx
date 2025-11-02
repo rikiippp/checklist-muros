@@ -7,6 +7,7 @@ import { RootStackParamList } from '../navigation/index.tsx';
 import { auth, db } from '../firebase/index.ts';
 import { collection, onSnapshot, query, where, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Team'>;
 
@@ -45,7 +46,7 @@ export default function TeamScreen({ navigation }: Props) {
         setIsAdmin(false);
       }
     })();
-    
+
     const q = query(collection(db, 'users'), where('companyId', '==', COMPANY_ID));
     const unsub = onSnapshot(q, (snap) => {
       const membersData = snap.docs.map((d) => {
@@ -58,7 +59,7 @@ export default function TeamScreen({ navigation }: Props) {
         } as Member;
       });
       setMembers(membersData);
-      
+
       // Verificar rol desde la lista de miembros (backup)
       const currentMember = membersData.find(m => m.uid === user.uid);
       if (currentMember) {
@@ -84,103 +85,103 @@ export default function TeamScreen({ navigation }: Props) {
         </View>
       ) : (
         <>
-        <View style={{ padding: 16, backgroundColor: '#f5f5f5', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' }}>
-          {isAdmin ? (
-            <>
-              <Button
-                mode={manageRolesMode ? "contained" : "outlined"}
-                onPress={() => setManageRolesMode(!manageRolesMode)}
-                icon={manageRolesMode ? "check-circle" : "account-edit"}
-              >
-                {manageRolesMode ? 'Finalizar gestión de roles' : 'Gestionar roles del equipo'}
-              </Button>
-              {manageRolesMode && (
-                <Text variant="bodySmall" style={{ marginTop: 8, color: '#666', textAlign: 'center' }}>
-                  Toca en un miembro para cambiar su rol
-                </Text>
-              )}
-            </>
-          ) : (
-            <Text variant="bodyMedium" style={{ textAlign: 'center', color: '#666' }}>
-              Solo los administradores pueden gestionar roles
-            </Text>
-          )}
-        </View>
-        <FlatList
-          data={members}
-          keyExtractor={(m: Member) => m.uid}
-          renderItem={({ item }: { item: Member }) => {
-            const isCurrentUser = auth.currentUser && auth.currentUser.uid === item.uid;
-            const canEdit = isAdmin && manageRolesMode && !isCurrentUser;
-            
-            return (
-              <List.Item
-                title={item.name || item.email}
-                description={item.role === 'admin' ? 'administrador' : 'usuario'}
-                left={() => (
-                  // @ts-ignore
-                  <Image source={require('../../assets/logo.png')} style={{ width: 22, height: 22, marginHorizontal: 12 }} resizeMode="contain" />
+          <View style={{ padding: 16, backgroundColor: '#f5f5f5', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' }}>
+            {isAdmin ? (
+              <>
+                <Button
+                  mode={manageRolesMode ? "contained" : "outlined"}
+                  onPress={() => setManageRolesMode(!manageRolesMode)}
+                  icon={manageRolesMode ? "check-circle" : "account-edit"}
+                >
+                  {manageRolesMode ? 'Finalizar gestión de roles' : 'Gestionar roles del equipo'}
+                </Button>
+                {manageRolesMode && (
+                  <Text variant="bodySmall" style={{ marginTop: 8, color: '#666', textAlign: 'center' }}>
+                    Toca en un miembro para cambiar su rol
+                  </Text>
                 )}
-                onPress={() => {
-                  if (!canEdit) {
-                    if (isAdmin && manageRolesMode && isCurrentUser) {
-                      // Mostrar mensaje que no puede cambiar su propio rol
+              </>
+            ) : (
+              <Text variant="bodyMedium" style={{ textAlign: 'center', color: '#666' }}>
+                Solo los administradores pueden gestionar roles
+              </Text>
+            )}
+          </View>
+          <FlatList
+            data={members}
+            keyExtractor={(m: Member) => m.uid}
+            renderItem={({ item }: { item: Member }) => {
+              const isCurrentUser = auth.currentUser && auth.currentUser.uid === item.uid;
+              const canEdit = isAdmin && manageRolesMode && !isCurrentUser;
+
+              return (
+                <List.Item
+                  title={item.name || item.email}
+                  description={item.role === 'admin' ? 'administrador' : 'usuario'}
+                  left={() => (
+                    // @ts-ignore
+                    <Image source={require('../../assets/logo.png')} style={{ width: 22, height: 22, marginHorizontal: 12 }} resizeMode="contain" />
+                  )}
+                  onPress={() => {
+                    if (!canEdit) {
+                      if (isAdmin && manageRolesMode && isCurrentUser) {
+                        // Mostrar mensaje que no puede cambiar su propio rol
+                        return;
+                      }
                       return;
                     }
-                    return;
-                  }
-                  setSelectedMember(item);
-                  setSelectedRole((item.role === 'admin' ? 'admin' : 'user') as 'admin' | 'user');
-                  setRoleDialogOpen(true);
-                }}
-                style={{
-                  backgroundColor: canEdit ? '#fff3e0' : 'transparent',
-                  opacity: canEdit ? 1 : (isAdmin && manageRolesMode && isCurrentUser ? 0.5 : 1)
-                }}
-              />
-            );
-          }}
-        />
-        <Portal>
-          <Dialog visible={roleDialogOpen} onDismiss={() => setRoleDialogOpen(false)}>
-            <Dialog.Title>Cambiar rol de miembro</Dialog.Title>
-            <Dialog.Content>
-              <Text variant="titleMedium" style={{ marginBottom: 16 }}>
-                {selectedMember?.name || selectedMember?.email}
-              </Text>
-              <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666' }}>
-                Rol actual: <Text style={{ fontWeight: 'bold' }}>{selectedMember?.role === 'admin' ? 'Administrador' : 'Usuario'}</Text>
-              </Text>
-              <RadioButton.Group onValueChange={(v) => setSelectedRole(v as 'admin' | 'user')} value={selectedRole}>
-                <RadioButton.Item label="Administrador" value="admin" />
-                <RadioButton.Item label="Usuario" value="user" />
-              </RadioButton.Group>
-            </Dialog.Content>
-            <Dialog.Actions>
-              <Button onPress={() => {
-                setRoleDialogOpen(false);
-                setSelectedMember(null);
-              }}>Cancelar</Button>
-              <Button 
-                mode="contained"
-                onPress={async () => {
-                  if (selectedMember && selectedMember.role !== selectedRole) {
-                    try {
-                      await updateDoc(doc(db, 'users', selectedMember.uid), { role: selectedRole });
-                      // Mostrar confirmación breve
-                    } catch (error) {
-                      console.error('Error al actualizar rol:', error);
-                    }
-                  }
+                    setSelectedMember(item);
+                    setSelectedRole((item.role === 'admin' ? 'admin' : 'user') as 'admin' | 'user');
+                    setRoleDialogOpen(true);
+                  }}
+                  style={{
+                    backgroundColor: canEdit ? '#fff3e0' : 'transparent',
+                    opacity: canEdit ? 1 : (isAdmin && manageRolesMode && isCurrentUser ? 0.5 : 1)
+                  }}
+                />
+              );
+            }}
+          />
+          <Portal>
+            <Dialog visible={roleDialogOpen} onDismiss={() => setRoleDialogOpen(false)}>
+              <Dialog.Title>Cambiar rol de miembro</Dialog.Title>
+              <Dialog.Content>
+                <Text variant="titleMedium" style={{ marginBottom: 16 }}>
+                  {selectedMember?.name || selectedMember?.email}
+                </Text>
+                <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666' }}>
+                  Rol actual: <Text style={{ fontWeight: 'bold' }}>{selectedMember?.role === 'admin' ? 'Administrador' : 'Usuario'}</Text>
+                </Text>
+                <RadioButton.Group onValueChange={(v) => setSelectedRole(v as 'admin' | 'user')} value={selectedRole}>
+                  <RadioButton.Item label="Administrador" value="admin" />
+                  <RadioButton.Item label="Usuario" value="user" />
+                </RadioButton.Group>
+              </Dialog.Content>
+              <Dialog.Actions>
+                <Button onPress={() => {
                   setRoleDialogOpen(false);
                   setSelectedMember(null);
-                }}
-              >
-                Guardar cambios
-              </Button>
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
+                }}>Cancelar</Button>
+                <Button
+                  mode="contained"
+                  onPress={async () => {
+                    if (selectedMember && selectedMember.role !== selectedRole) {
+                      try {
+                        await updateDoc(doc(db, 'users', selectedMember.uid), { role: selectedRole });
+                        // Mostrar confirmación breve
+                      } catch (error) {
+                        console.error('Error al actualizar rol:', error);
+                      }
+                    }
+                    setRoleDialogOpen(false);
+                    setSelectedMember(null);
+                  }}
+                >
+                  Guardar cambios
+                </Button>
+              </Dialog.Actions>
+            </Dialog>
+          </Portal>
         </>
       )}
     </View>

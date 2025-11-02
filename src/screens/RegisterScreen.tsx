@@ -7,6 +7,8 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../firebase/index.ts';
 import { doc, setDoc } from 'firebase/firestore';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Register'>;
 
@@ -74,7 +76,7 @@ export default function RegisterScreen({ navigation }: Props) {
         setShowSuccessDialog(false);
         setCreatedAsAdmin(false);
         navigation.replace('Login');
-      }, 4500);
+      }, 3500);
       
       // Retornar para evitar que el catch se ejecute
       return;
@@ -85,11 +87,12 @@ export default function RegisterScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={{ flex: 1, padding: 16, justifyContent: 'center' }}>
+    <SafeAreaView style={{ flex: 1 }}>
+    <View style={{ flex: 1, padding: 20, justifyContent: 'center', marginTop: -65 }}>
       {/* Logo en register - mismo tamaño que login */}
       {/* @ts-ignore */}
-      <Image source={require('../../assets/logo.png')} style={{ width: 160, height: 160, alignSelf: 'center', marginBottom: 12 }} resizeMode="contain" />
-      <Text variant="headlineMedium" style={{ marginBottom: 16, textAlign: 'center' }}>Crear cuenta</Text>
+      <Image source={require('../../assets/favIcon.png')} style={{ width: 300, height: 300, alignSelf: 'center', marginTop: -80 }} resizeMode="contain" />
+      <Text variant="headlineMedium" style={{ marginBottom: 16, textAlign: 'center', marginTop: -30 }}>Crea una cuenta</Text>
       <TextInput label="Nombre" value={name} onChangeText={setName} style={{ marginBottom: 12 }} />
       {!!error && <Text style={{ color: 'red', marginBottom: 8 }}>{error}</Text>}
       <TextInput label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" style={{ marginBottom: 12 }} />
@@ -109,7 +112,7 @@ export default function RegisterScreen({ navigation }: Props) {
       </Text>
       
       {/* Mensaje informativo sobre el rol */}
-      <View style={{ 
+    {/*}  <View style={{ 
         backgroundColor: adminCode.trim() === ADMIN_CODE ? '#e8f5e9' : '#fff3e0', 
         padding: 12, 
         borderRadius: 8, 
@@ -124,7 +127,7 @@ export default function RegisterScreen({ navigation }: Props) {
             : 'ℹ️ Tu cuenta se creará como Usuario normal (sin permisos de administrador)'
           }
         </Text>
-      </View>
+      </View>*/}
       <Button mode="contained" onPress={onRegister} loading={loading} disabled={loading}>
         Registrarme
       </Button>
@@ -139,7 +142,7 @@ export default function RegisterScreen({ navigation }: Props) {
           <Dialog.Title style={{ textAlign: 'center' }}>¡Cuenta creada exitosamente!</Dialog.Title>
           <Dialog.Content>
             <Text variant="bodyMedium" style={{ textAlign: 'center', marginBottom: 12 }}>
-              Tu cuenta ha sido creada correctamente. Serás redirigido al inicio de sesión para que puedas ingresar con tus credenciales.
+              Serás redirigido al inicio de sesión para que puedas ingresar con tus credenciales.
             </Text>
             {createdAsAdmin && (
               <View style={{ backgroundColor: '#fff3e0', padding: 12, borderRadius: 8, marginTop: 8 }}>
@@ -152,6 +155,7 @@ export default function RegisterScreen({ navigation }: Props) {
         </Dialog>
       </Portal>
     </View>
+    </SafeAreaView>
   );
 }
 

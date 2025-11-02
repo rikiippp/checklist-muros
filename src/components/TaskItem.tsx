@@ -74,13 +74,14 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 8,
+        paddingVertical: 20,
         paddingHorizontal: 4,
-        backgroundColor: done ? '#c8e6c9' : (isOverdue ? '#ffebee' : 'transparent'),
+        backgroundColor: done ? '#c8e6c9' : (isOverdue ? '#ffebee' : 'rgba(255, 255, 255, 0.95)'),
         borderRadius: 8,
-        marginVertical: 4,
-        borderWidth: isOverdue && !done ? 2 : 0,
-        borderColor: isOverdue && !done ? '#f44336' : 'transparent'
+        marginVertical: 2,
+        borderWidth: isOverdue && !done ? 2 : 1,
+        borderColor: isOverdue && !done ? '#f44336' : 'rgba(200,200,200,0.4)',
+        
       }}>
         <View style={{ width: 6, height: 40, backgroundColor: color, borderRadius: 4, marginRight: 8 }} />
         <Checkbox status={done ? 'checked' : 'unchecked'} onPress={handleToggle} />

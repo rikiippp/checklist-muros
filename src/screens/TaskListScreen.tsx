@@ -12,6 +12,7 @@ import TaskItem from '../components/TaskItem.tsx';
 import { COLOR_LABELS, BRAND_COLORS } from '../theme.ts';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
 import { scheduleNotificationsForTask } from '../services/taskNotifications.ts';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Tasks'>;
 
@@ -75,7 +76,7 @@ export default function TaskListScreen({ navigation }: Props) {
         }
       });
       setTasks(items);
-      
+
       // Programar notificaciones para todas las tareas pendientes con fecha límite
       // (solo para las tareas que el usuario puede ver)
       for (const task of items) {
@@ -91,7 +92,7 @@ export default function TaskListScreen({ navigation }: Props) {
         }
       }
     });
-    
+
     // Si hay una tarea siendo completada, mantenerla en la lista hasta que termine el delay
     // (esto se maneja en el estado completingTaskId y en renderItem)
     return () => { unsub(); unsubUsers(); };
@@ -186,97 +187,99 @@ export default function TaskListScreen({ navigation }: Props) {
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour >= 0 && hour < 5) {
-      return { emoji: '🌃', message: 'Ya es muy tarde, anda a dormir por favor 😴' };
+      return { emoji: '👋', message: 'Anda a dormir 😴' };
     }
     if (hour >= 5 && hour < 8) {
-      return { emoji: '🌅', message: 'Madrugador! A darle con todo 💪' };
+      return { emoji: '👋', message: 'Madrugador! Metele ganas 💪' };
     }
     if (hour >= 8 && hour < 12) {
-      return { emoji: '☀️', message: 'Buenos días! A organizar el día 🚀' };
+      return { emoji: '👋', message: 'Buenos días! A organizar el día 🚀' };
     }
     if (hour >= 12 && hour < 14) {
-      return { emoji: '🌤️', message: 'Hora de comer! Después seguimos 🍽️' };
+      return { emoji: '👋', message: 'Hora de comer! Después seguimos 🍽️' };
     }
     if (hour >= 14 && hour < 18) {
-      return { emoji: '☀️', message: 'Tarde productiva! Vamos que se puede 💼' };
+      return { emoji: '👋', message: 'Hace tu tarde productiva! 💼' };
     }
     if (hour >= 18 && hour < 22) {
-      return { emoji: '🌙', message: 'Casi terminamos el día! Últimos esfuerzos ⭐' };
+      return { emoji: '👋', message: 'Casi terminamos el día! ⭐' };
     }
-    return { emoji: '🌃', message: 'Ya es tarde, anda a dormir por favor 😴' };
+    return { emoji: '👋', message: 'Ya es tarde, anda a dormir 😴' };
   };
 
   const greeting = getGreeting();
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* Saludo con nombre del usuario - ARRIBA del navbar */}
-      {userName && (
-        <View style={styles.greetingContainer}>
-          <Text variant="titleLarge" style={styles.greetingText}>
-            Hola {userName}! {greeting.emoji}
-          </Text>
-          <Text variant="bodyMedium" style={styles.greetingMessage}>
-            {greeting.message}
-          </Text>
-        </View>
-      )}
-      <Appbar.Header>
-        <Appbar.Content title="Tareas" />
-        <IconButtonWithFeedback 
-          icon="account-group" 
-          onPress={() => navigation.navigate('Team')} 
+    <SafeAreaView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        {/* Saludo con nombre del usuario - ARRIBA del navbar */}
+        {userName && (
+          <View style={styles.greetingContainer}>
+            <Text variant="titleLarge" style={styles.greetingText}>
+              Hola {userName}! {greeting.emoji}
+            </Text>
+            <Text variant="bodyMedium" style={styles.greetingMessage}>
+              {greeting.message}
+            </Text>
+          </View>
+        )}
+        <Appbar.Header >
+          <Appbar.Content title="Tareas" />
+          <IconButtonWithFeedback
+            icon="account-group"
+            onPress={() => navigation.navigate('Team')}
+          />
+          <IconButtonWithFeedback
+            icon="check-circle"
+            onPress={() => navigation.navigate('CompletedTasks')}
+          />
+          <IconButtonWithFeedback
+            icon="logout"
+            onPress={() => auth.signOut().then(() => navigation.replace('Login'))}
+          />
+        </Appbar.Header>
+        {tasks.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <Text style={{ marginBottom: 12 }}>No hay tareas aún</Text>
+            <Button mode="outlined" onPress={seedQuickTask}>Cargar ejemplo</Button>
+          </View>
+        ) : (
+          <FlatList
+            data={tasksToRender}
+            keyExtractor={(t: Task) => t.id}
+            renderItem={renderItem}
+            contentContainerStyle={{ padding: 12 }}
+          />
+        )}
+        <FAB
+          icon="plus"
+          style={{
+            position: 'absolute',
+            right: 16,
+            bottom: 40,
+            zIndex: 10,
+            backgroundColor: BRAND_COLORS.primary
+          }}
+          onPress={() => navigation.navigate('TaskForm')}
+          color="#FFFFFF"
+          size="medium"
         />
-        <IconButtonWithFeedback 
-          icon="check-circle" 
-          onPress={() => navigation.navigate('CompletedTasks')} 
+        {/* Logo centrado abajo - no interfiere con toques */}
+        {/* @ts-ignore */}
+        <Image
+          source={require('../../assets/logo.png')}
+          style={{ position: 'absolute', zIndex: -1, alignSelf: 'center', bottom: -40, width: 200, height: 200 }}
+          resizeMode="contain"
         />
-        <IconButtonWithFeedback 
-          icon="logout" 
-          onPress={() => auth.signOut().then(() => navigation.replace('Login'))} 
-        />
-      </Appbar.Header>
-      {tasks.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <Text style={{ marginBottom: 12 }}>No hay tareas aún</Text>
-          <Button mode="outlined" onPress={seedQuickTask}>Cargar ejemplo</Button>
-        </View>
-      ) : (
-        <FlatList
-          data={tasksToRender}
-          keyExtractor={(t: Task) => t.id}
-          renderItem={renderItem}
-          contentContainerStyle={{ padding: 12 }}
-        />
-      )}
-      <FAB 
-        icon="plus" 
-        style={{ 
-          position: 'absolute', 
-          right: 16, 
-          bottom: 50, 
-          zIndex: 10,
-          backgroundColor: BRAND_COLORS.primary 
-        }} 
-        onPress={() => navigation.navigate('TaskForm')}
-        color="#FFFFFF"
-        size="medium"
-      />
-      {/* Logo centrado abajo - no interfiere con toques */}
-      {/* @ts-ignore */}
-      <Image
-        source={require('../../assets/logo.png')}
-        style={{ position: 'absolute', alignSelf: 'center', bottom: -40, width: 200, height: 200 }}
-        resizeMode="contain"
-      />
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 // Componente para botones con efecto hover/press en naranja
 function IconButtonWithFeedback({ icon, onPress }: { icon: string; onPress: () => void }) {
   const [pressed, setPressed] = React.useState(false);
-  
+
   return (
     <TouchableOpacity
       onPressIn={() => setPressed(true)}
@@ -298,7 +301,7 @@ function IconButtonWithFeedback({ icon, onPress }: { icon: string; onPress: () =
 const styles = StyleSheet.create({
   greetingContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 16,
     paddingBottom: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,

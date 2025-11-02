@@ -26,12 +26,12 @@ export default function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator initialRouteName={user ? 'Tasks' : 'Login'}>
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Crear cuenta' }} />
+        <Stack.Screen name="Register" component={RegisterScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Tasks" component={TaskListScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="CompletedTasks" component={CompletedTasksScreen} options={{ title: 'Tareas Completadas' }} />
-        <Stack.Screen name="Team" component={TeamScreen} options={{ title: 'Mi equipo' }} />
+        <Stack.Screen name="CompletedTasks" component={CompletedTasksScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Team" component={TeamScreen} options={{ headerShown: false }} />
         <Stack.Group screenOptions={{ presentation: 'modal' }}>
-          <Stack.Screen name="TaskForm" component={TaskFormModal} options={{ title: 'Nueva tarea' }} />
+          <Stack.Screen name="TaskForm" component={TaskFormModal} options={{ headerShown: false }} />
         </Stack.Group>
       </Stack.Navigator>
     </NavigationContainer>
