@@ -254,7 +254,7 @@ export default function TaskListScreen({ navigation }: Props) {
         style={{ 
           position: 'absolute', 
           right: 16, 
-          bottom: 30, 
+          bottom: 50, 
           zIndex: 10,
           backgroundColor: BRAND_COLORS.primary 
         }} 
