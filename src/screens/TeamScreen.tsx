@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, View } from 'react-native';
-import { Appbar, List, Text, Dialog, Portal, RadioButton, Button } from 'react-native-paper';
+import { FlatList, View, ScrollView, StyleSheet } from 'react-native';
+import { Appbar, List, Text, Dialog, Portal, RadioButton, Button, Divider } from 'react-native-paper';
 import { Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/index.tsx';
 import { auth, db } from '../firebase/index.ts';
-import { collection, onSnapshot, query, where, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -18,6 +18,16 @@ type Member = {
   role?: string;
 };
 
+type Task = {
+  id: string;
+  title: string;
+  done: boolean;
+  dueDate?: Timestamp | null;
+  assigneeUid?: string;
+  forAll?: boolean;
+  participants?: string[];
+};
+
 export default function TeamScreen({ navigation }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -25,6 +35,11 @@ export default function TeamScreen({ navigation }: Props) {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [selectedRole, setSelectedRole] = useState<'admin' | 'user'>('user');
   const [manageRolesMode, setManageRolesMode] = useState(false);
+  
+  // Estados para modal de estadísticas
+  const [statsDialogOpen, setStatsDialogOpen] = useState(false);
+  const [selectedMemberForStats, setSelectedMemberForStats] = useState<Member | null>(null);
+  const [userTasks, setUserTasks] = useState<Task[]>([]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -72,6 +87,99 @@ export default function TeamScreen({ navigation }: Props) {
     });
     return () => unsub();
   }, [navigation]);
+
+  // Cargar tareas del usuario seleccionado para estadísticas
+  useEffect(() => {
+    if (!selectedMemberForStats) {
+      setUserTasks([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'tasks'),
+      where('companyId', '==', COMPANY_ID)
+    );
+    
+    const unsub = onSnapshot(q, (snap) => {
+      const tasks: Task[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        const task: Task = {
+          id: d.id,
+          title: data.title || '',
+          done: data.done || false,
+          dueDate: data.dueDate || null,
+          assigneeUid: data.assigneeUid,
+          forAll: data.forAll || false,
+          participants: data.participants || [],
+        };
+
+        // Filtrar tareas donde el usuario es participante o asignado
+        const isParticipant = task.participants?.includes(selectedMemberForStats.uid) || false;
+        const isAssignee = task.assigneeUid === selectedMemberForStats.uid || false;
+        const isForAll = task.forAll === true;
+
+        if (isParticipant || isAssignee || isForAll) {
+          tasks.push(task);
+        }
+      });
+      setUserTasks(tasks);
+    });
+
+    return () => unsub();
+  }, [selectedMemberForStats]);
+
+  // Calcular estadísticas del usuario
+  const calculateStats = () => {
+    if (!selectedMemberForStats) return { assigned: 0, completed: 0, overdue: 0, assignedTasks: [], completedTasks: [], overdueTasks: [] };
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const assignedTasks: Task[] = [];
+    const completedTasks: Task[] = [];
+    const overdueTasks: Task[] = [];
+
+    userTasks.forEach(task => {
+      if (task.done) {
+        completedTasks.push(task);
+      } else {
+        assignedTasks.push(task);
+        
+        // Verificar si está vencida
+        if (task.dueDate) {
+          const dueDate = task.dueDate.toDate ? task.dueDate.toDate() : new Date(task.dueDate.seconds * 1000);
+          const dueDay = new Date(dueDate);
+          dueDay.setHours(0, 0, 0, 0);
+          
+          if (dueDay < now) {
+            overdueTasks.push(task);
+          }
+        }
+      }
+    });
+
+    return {
+      assigned: assignedTasks.length,
+      completed: completedTasks.length,
+      overdue: overdueTasks.length,
+      assignedTasks,
+      completedTasks,
+      overdueTasks,
+    };
+  };
+
+  const stats = calculateStats();
+
+  const openStatsDialog = (member: Member) => {
+    setSelectedMemberForStats(member);
+    setStatsDialogOpen(true);
+  };
+
+  const closeStatsDialog = () => {
+    setStatsDialogOpen(false);
+    setSelectedMemberForStats(null);
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -123,16 +231,15 @@ export default function TeamScreen({ navigation }: Props) {
                     <Image source={require('../../assets/logo.png')} style={{ width: 22, height: 22, marginHorizontal: 12 }} resizeMode="contain" />
                   )}
                   onPress={() => {
-                    if (!canEdit) {
-                      if (isAdmin && manageRolesMode && isCurrentUser) {
-                        // Mostrar mensaje que no puede cambiar su propio rol
-                        return;
-                      }
-                      return;
+                    if (canEdit) {
+                      // Modo de gestión de roles: abrir diálogo de cambio de rol
+                      setSelectedMember(item);
+                      setSelectedRole((item.role === 'admin' ? 'admin' : 'user') as 'admin' | 'user');
+                      setRoleDialogOpen(true);
+                    } else {
+                      // Modo normal: abrir estadísticas del usuario
+                      openStatsDialog(item);
                     }
-                    setSelectedMember(item);
-                    setSelectedRole((item.role === 'admin' ? 'admin' : 'user') as 'admin' | 'user');
-                    setRoleDialogOpen(true);
                   }}
                   style={{
                     backgroundColor: canEdit ? '#fff3e0' : 'transparent',
@@ -182,10 +289,148 @@ export default function TeamScreen({ navigation }: Props) {
               </Dialog.Actions>
             </Dialog>
           </Portal>
+
+          {/* Modal de estadísticas de usuario */}
+          <Portal>
+            <Dialog visible={statsDialogOpen} onDismiss={closeStatsDialog} style={{ maxHeight: '80%' }}>
+              <Dialog.Title>
+                Estadísticas de {selectedMemberForStats?.name || selectedMemberForStats?.email}
+              </Dialog.Title>
+              <Dialog.Content>
+                <ScrollView style={{ maxHeight: 500 }}>
+                  {/* Resumen de estadísticas */}
+                  <View style={styles.statsContainer}>
+                    <View style={styles.statBox}>
+                      <Text variant="headlineMedium" style={styles.statNumber}>{stats.assigned}</Text>
+                      <Text variant="bodySmall" style={styles.statLabel}>Tareas asignadas</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text variant="headlineMedium" style={[styles.statNumber, { color: '#43a047' }]}>{stats.completed}</Text>
+                      <Text variant="bodySmall" style={styles.statLabel}>Completadas</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                      <Text variant="headlineMedium" style={[styles.statNumber, { color: '#e53935' }]}>{stats.overdue}</Text>
+                      <Text variant="bodySmall" style={styles.statLabel}>Vencidas</Text>
+                    </View>
+                  </View>
+
+                  <Divider style={{ marginVertical: 16 }} />
+
+                  {/* Tareas asignadas */}
+                  <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: 'bold' }}>
+                    Tareas asignadas ({stats.assigned})
+                  </Text>
+                  {stats.assignedTasks.length === 0 ? (
+                    <Text variant="bodySmall" style={{ color: '#666', marginBottom: 16 }}>
+                      No hay tareas asignadas
+                    </Text>
+                  ) : (
+                    <View style={{ marginBottom: 16 }}>
+                      {stats.assignedTasks.map((task) => (
+                        <View key={task.id} style={styles.taskItem}>
+                          <Text variant="bodyMedium" style={{ fontWeight: '500' }}>
+                            • {task.title}
+                          </Text>
+                          {task.dueDate && (
+                            <Text variant="bodySmall" style={{ color: '#666', marginTop: 4 }}>
+                              Vence: {task.dueDate.toDate ? task.dueDate.toDate().toLocaleDateString() : 'N/A'}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  <Divider style={{ marginVertical: 16 }} />
+
+                  {/* Tareas vencidas */}
+                  {stats.overdue > 0 && (
+                    <>
+                      <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: 'bold', color: '#e53935' }}>
+                        Tareas vencidas ({stats.overdue})
+                      </Text>
+                      <View style={{ marginBottom: 16 }}>
+                        {stats.overdueTasks.map((task) => (
+                          <View key={task.id} style={styles.taskItem}>
+                            <Text variant="bodyMedium" style={{ fontWeight: '500', color: '#e53935' }}>
+                              • {task.title}
+                            </Text>
+                            {task.dueDate && (
+                              <Text variant="bodySmall" style={{ color: '#666', marginTop: 4 }}>
+                                Vencida: {task.dueDate.toDate ? task.dueDate.toDate().toLocaleDateString() : 'N/A'}
+                              </Text>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                      <Divider style={{ marginVertical: 16 }} />
+                    </>
+                  )}
+
+                  {/* Tareas completadas */}
+                  <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: 'bold', color: '#43a047' }}>
+                    Tareas completadas ({stats.completed})
+                  </Text>
+                  {stats.completedTasks.length === 0 ? (
+                    <Text variant="bodySmall" style={{ color: '#666' }}>
+                      No hay tareas completadas
+                    </Text>
+                  ) : (
+                    <View>
+                      {stats.completedTasks.slice(0, 10).map((task) => (
+                        <View key={task.id} style={styles.taskItem}>
+                          <Text variant="bodyMedium" style={{ fontWeight: '500', color: '#43a047' }}>
+                            • {task.title}
+                          </Text>
+                        </View>
+                      ))}
+                      {stats.completedTasks.length > 10 && (
+                        <Text variant="bodySmall" style={{ color: '#666', marginTop: 8, fontStyle: 'italic' }}>
+                          ...y {stats.completedTasks.length - 10} más
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </ScrollView>
+              </Dialog.Content>
+              <Dialog.Actions>
+                <Button onPress={closeStatsDialog}>Cerrar</Button>
+              </Dialog.Actions>
+            </Dialog>
+          </Portal>
         </>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    paddingVertical: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+  },
+  statBox: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  statLabel: {
+    color: '#666',
+    marginTop: 4,
+  },
+  taskItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+});
 
 

@@ -77,33 +77,72 @@ export default function TaskFormModal({ navigation }: Props) {
         }
       }
 
-      // Notificaciones: enviar a tokens de los participantes (excepto el creador)
+      // Notificaciones inmediatas: enviar notificaciones locales y push a los participantes
       try {
         const tokens: string[] = [];
+        const userNames: Record<string, string> = {};
+        
+        // Obtener tokens y nombres de los participantes (excepto el creador)
         for (const uid of participants) {
           if (uid === user.uid) continue;
           const udoc = await getDoc(doc(db, 'users', uid));
-          const t = (udoc.data() as any)?.expoPushToken;
+          const userData = udoc.data() as any;
+          const t = userData?.expoPushToken;
           if (t) tokens.push(t);
+          // Guardar nombre para la notificación
+          userNames[uid] = userData?.name || userData?.email?.split('@')[0] || 'Usuario';
         }
+
+        // Enviar notificaciones push a todos los participantes (excepto el creador)
+        // Estas notificaciones llegan a todos los dispositivos, incluso los que no usan Expo Go
         if (tokens.length > 0) {
-          const response = await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(tokens.map((to) => ({
-              to,
-              sound: 'default',
-              title: 'Nueva tarea',
-              body: title.trim(),
-              data: { taskId: taskRef.id },
-            })) as any),
+          // Enviar todas las notificaciones push de forma paralela y esperar a que se completen
+          // Esto asegura que se envíen inmediatamente sin retrasos
+          const pushPromises = tokens.map(async (to) => {
+            try {
+              const response = await fetch('https://exp.host/--/api/v2/push/send', {
+                method: 'POST',
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  to,
+                  sound: 'default',
+                  title: '📋 Nueva tarea asignada',
+                  body: `Se te asignó: "${title.trim()}"`,
+                  data: { taskId: taskRef.id, type: 'new-task' },
+                  priority: 'high',
+                  channelId: 'default',
+                }),
+              });
+              
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              
+              const result = await response.json();
+              if (__DEV__) {
+                console.log('Notificación push enviada:', result);
+              }
+              return result;
+            } catch (err) {
+              console.warn('Error al enviar notificación push individual:', err);
+              throw err;
+            }
           });
-          const result = await response.json();
-          if (__DEV__) {
-            console.log('Notificaciones enviadas:', result);
+
+          // Esperar a que todas las notificaciones se envíen (con timeout de 10 segundos)
+          try {
+            await Promise.race([
+              Promise.allSettled(pushPromises),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout en notificaciones push')), 10000)
+              )
+            ]);
+          } catch (error) {
+            // Si hay timeout o error, no bloquear el flujo pero loguear
+            console.warn('Algunas notificaciones push pueden no haberse enviado:', error);
           }
         }
       } catch (error) {

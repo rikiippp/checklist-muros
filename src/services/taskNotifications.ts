@@ -32,8 +32,14 @@ export async function scheduleTaskDeadlineNotifications(
     const deadlineDate = dueDate.toDate();
     const now = new Date();
     
-    // Si la fecha límite ya pasó, no programar notificaciones
-    if (deadlineDate <= now) {
+    // Normalizar fechas para comparación (solo día, sin hora)
+    const deadlineDay = new Date(deadlineDate);
+    deadlineDay.setHours(0, 0, 0, 0);
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    
+    // Si la fecha límite ya pasó (día completo), no programar notificaciones
+    if (deadlineDay < today) {
       return;
     }
 
@@ -58,9 +64,7 @@ export async function scheduleTaskDeadlineNotifications(
           sound: 'default',
           data: { taskId, type: 'deadline-reminder' },
         },
-        trigger: {
-          date: twoDaysBefore,
-        },
+        trigger: { date: twoDaysBefore } as any,
       });
     }
 
@@ -74,19 +78,12 @@ export async function scheduleTaskDeadlineNotifications(
           sound: 'default',
           data: { taskId, type: 'deadline-reminder' },
         },
-        trigger: {
-          date: oneDayBefore,
-        },
+        trigger: { date: oneDayBefore } as any,
       });
     }
 
     // Notificaciones el día de vencimiento: cada 2 horas de 8 AM a 10 PM
-    const deadlineDay = new Date(deadlineDate);
-    deadlineDay.setHours(0, 0, 0, 0);
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-
-    // Solo programar si el día de vencimiento es hoy o futuro
+    // Solo programar si el día de vencimiento es hoy o futuro (ya calculado arriba)
     if (deadlineDay >= today) {
       // Horarios: 8 AM, 10 AM, 12 PM, 2 PM, 4 PM, 6 PM, 8 PM, 10 PM
       const reminderHours = [8, 10, 12, 14, 16, 18, 20, 22];
@@ -94,9 +91,11 @@ export async function scheduleTaskDeadlineNotifications(
       for (const hour of reminderHours) {
         const reminderTime = new Date(deadlineDate);
         reminderTime.setHours(hour, 0, 0, 0);
+        reminderTime.setSeconds(0, 0);
 
-        // Solo programar si el tiempo aún no pasó
-        if (reminderTime > now) {
+        // Solo programar si el tiempo aún no pasó (con margen de 1 minuto)
+        const oneMinuteFromNow = new Date(now.getTime() + 60000);
+        if (reminderTime > oneMinuteFromNow) {
           notifications.push({
             identifier: `task-${taskId}-due-${hour}`,
             content: {
@@ -105,9 +104,7 @@ export async function scheduleTaskDeadlineNotifications(
               sound: 'default',
               data: { taskId, type: 'deadline-today' },
             },
-            trigger: {
-              date: reminderTime,
-            },
+            trigger: { date: reminderTime } as any,
           });
         }
       }
@@ -174,4 +171,5 @@ export async function scheduleNotificationsForTask(
 
   await scheduleTaskDeadlineNotifications(taskId, taskTitle, dueDate);
 }
+
 

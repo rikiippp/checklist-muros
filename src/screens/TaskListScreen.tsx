@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, View, TouchableOpacity, StyleSheet } from 'react-native';
-import { Appbar, Button, FAB, Text } from 'react-native-paper';
+import { FlatList, View, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { Appbar, Button, FAB, Text, Chip, Menu, Portal, Dialog } from 'react-native-paper';
 import { Alert } from 'react-native';
 import { Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/index.tsx';
 import { auth, db } from '../firebase/index.ts';
 import type { User } from 'firebase/auth';
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, addDoc, getDoc, onSnapshot as onSnapshotUsers } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, addDoc, getDoc, onSnapshot as onSnapshotUsers, Timestamp } from 'firebase/firestore';
 import TaskItem from '../components/TaskItem.tsx';
-import { COLOR_LABELS, BRAND_COLORS } from '../theme.ts';
+import { COLOR_LABELS, BRAND_COLORS, COLOR_OPTIONS } from '../theme.ts';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
 import { scheduleNotificationsForTask } from '../services/taskNotifications.ts';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -38,6 +38,13 @@ export default function TaskListScreen({ navigation }: Props) {
   const [userName, setUserName] = useState<string>('');
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
+  const [completedTasksCount, setCompletedTasksCount] = useState<number>(0);
+  
+  // Filtros
+  const [filterPriority, setFilterPriority] = useState<string | null>(null);
+  const [filterPerson, setFilterPerson] = useState<string | null>(null);
+  const [filterTime, setFilterTime] = useState<'all' | 'overdue' | 'today' | 'upcoming'>('all');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -93,9 +100,33 @@ export default function TaskListScreen({ navigation }: Props) {
       }
     });
 
+    // Contar tareas completadas del usuario
+    const qCompleted = query(
+      collection(db, 'tasks'),
+      where('companyId', '==', COMPANY_ID),
+      where('done', '==', true),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubCompleted = onSnapshot(qCompleted, (snap) => {
+      let count = 0;
+      snap.forEach((d) => {
+        const data = d.data() as any;
+        // Solo contar tareas donde el usuario es participante
+        if (Array.isArray(data.participants)) {
+          if (user && data.participants.includes(user.uid)) {
+            count++;
+          }
+        } else {
+          // Compatibilidad: si no hay participants, contar todas
+          count++;
+        }
+      });
+      setCompletedTasksCount(count);
+    });
+
     // Si hay una tarea siendo completada, mantenerla en la lista hasta que termine el delay
     // (esto se maneja en el estado completingTaskId y en renderItem)
-    return () => { unsub(); unsubUsers(); };
+    return () => { unsub(); unsubUsers(); unsubCompleted(); };
   }, [user, navigation]);
 
   const toggleDone = async (task: Task) => {
@@ -155,17 +186,80 @@ export default function TaskListScreen({ navigation }: Props) {
     });
   };
 
+  // Aplicar filtros a las tareas
+  const filteredTasks = useMemo(() => {
+    let filtered = tasks;
+
+    // Filtro por prioridad (color)
+    if (filterPriority) {
+      filtered = filtered.filter(task => task.color === filterPriority);
+    }
+
+    // Filtro por persona
+    if (filterPerson) {
+      filtered = filtered.filter(task => {
+        if (filterPerson === 'all') {
+          return (task as any).forAll === true;
+        }
+        return task.assigneeUid === filterPerson || 
+               (Array.isArray((task as any).participants) && (task as any).participants.includes(filterPerson));
+      });
+    }
+
+    // Filtro por tiempo
+    if (filterTime !== 'all') {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
+      filtered = filtered.filter(task => {
+        if (!task.dueDate) {
+          return filterTime === 'upcoming'; // Tareas sin fecha se consideran "próximas"
+        }
+        
+        const dueDate = task.dueDate.toDate ? task.dueDate.toDate() : new Date(task.dueDate.seconds * 1000);
+        const dueDay = new Date(dueDate);
+        dueDay.setHours(0, 0, 0, 0);
+        
+        const daysDiff = Math.ceil((dueDay.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        
+        switch (filterTime) {
+          case 'overdue':
+            return daysDiff < 0;
+          case 'today':
+            return daysDiff === 0;
+          case 'upcoming':
+            return daysDiff > 0;
+          default:
+            return true;
+        }
+      });
+    }
+
+    return filtered;
+  }, [tasks, filterPriority, filterPerson, filterTime]);
+
   // Incluir tareas que están siendo completadas aunque ya no estén en la query
   const tasksToRender = useMemo(() => {
-    if (!completingTask) return tasks;
+    const baseTasks = filteredTasks;
+    if (!completingTask) return baseTasks;
     // Si la tarea que se está completando ya no está en la lista (porque la query la filtró),
     // agregarla al principio para mantenerla visible durante el delay
-    const existsInTasks = tasks.some(t => t.id === completingTask.id);
+    const existsInTasks = baseTasks.some(t => t.id === completingTask.id);
     if (!existsInTasks) {
-      return [completingTask, ...tasks];
+      return [completingTask, ...baseTasks];
     }
-    return tasks;
-  }, [tasks, completingTask]);
+    return baseTasks;
+  }, [filteredTasks, completingTask]);
+
+  // Limpiar todos los filtros
+  const clearFilters = () => {
+    setFilterPriority(null);
+    setFilterPerson(null);
+    setFilterTime('all');
+  };
+
+  // Verificar si hay filtros activos
+  const hasActiveFilters = filterPriority !== null || filterPerson !== null || filterTime !== 'all';
 
   const renderItem = ({ item }: { item: Task }) => (
     <TaskItem
@@ -226,22 +320,139 @@ export default function TaskListScreen({ navigation }: Props) {
         <Appbar.Header >
           <Appbar.Content title="Tareas" />
           <IconButtonWithFeedback
+            icon="filter"
+            onPress={() => setShowFilterMenu(true)}
+          />
+          <IconButtonWithFeedback
             icon="account-group"
             onPress={() => navigation.navigate('Team')}
           />
           <IconButtonWithFeedback
             icon="check-circle"
             onPress={() => navigation.navigate('CompletedTasks')}
+            badge={completedTasksCount > 0 ? completedTasksCount : undefined}
           />
           <IconButtonWithFeedback
             icon="logout"
             onPress={() => auth.signOut().then(() => navigation.replace('Login'))}
           />
         </Appbar.Header>
+        
+        {/* Barra de filtros */}
+        {hasActiveFilters && (
+          <View style={styles.filtersContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersScroll}>
+              {filterPriority && (
+                <Chip
+                  icon="close"
+                  onClose={() => setFilterPriority(null)}
+                  style={styles.filterChip}
+                >
+                  {COLOR_OPTIONS.find(c => c.color === filterPriority)?.label || 'Prioridad'}
+                </Chip>
+              )}
+              {filterPerson && (
+                <Chip
+                  icon="close"
+                  onClose={() => setFilterPerson(null)}
+                  style={styles.filterChip}
+                >
+                  {filterPerson === 'all' ? 'Todos' : (userMap[filterPerson]?.name || userMap[filterPerson]?.email || 'Persona')}
+                </Chip>
+              )}
+              {filterTime !== 'all' && (
+                <Chip
+                  icon="close"
+                  onClose={() => setFilterTime('all')}
+                  style={styles.filterChip}
+                >
+                  {filterTime === 'overdue' ? 'Vencidas' : filterTime === 'today' ? 'Hoy' : 'Próximas'}
+                </Chip>
+              )}
+              <Button mode="text" onPress={clearFilters} compact>
+                Limpiar
+              </Button>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Modal de filtros */}
+        <Portal>
+          <Dialog visible={showFilterMenu} onDismiss={() => setShowFilterMenu(false)}>
+            <Dialog.Title>Filtrar tareas</Dialog.Title>
+            <Dialog.Content>
+              <Text variant="titleMedium" style={{ marginBottom: 8, marginTop: 8 }}>Por prioridad</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {COLOR_OPTIONS.map((opt) => (
+                  <Chip
+                    key={opt.color}
+                    selected={filterPriority === opt.color}
+                    onPress={() => setFilterPriority(filterPriority === opt.color ? null : opt.color)}
+                    style={{ marginRight: 8, marginBottom: 8, backgroundColor: filterPriority === opt.color ? opt.color : undefined }}
+                    textStyle={{ color: filterPriority === opt.color ? 'white' : undefined }}
+                  >
+                    {opt.label}
+                  </Chip>
+                ))}
+              </View>
+
+              <Text variant="titleMedium" style={{ marginBottom: 8 }}>Por persona</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                <Chip
+                  selected={filterPerson === 'all'}
+                  onPress={() => setFilterPerson(filterPerson === 'all' ? null : 'all')}
+                  style={styles.filterChip}
+                >
+                  Todos
+                </Chip>
+                {Object.entries(userMap).map(([uid, userData]) => (
+                  <Chip
+                    key={uid}
+                    selected={filterPerson === uid}
+                    onPress={() => setFilterPerson(filterPerson === uid ? null : uid)}
+                    style={styles.filterChip}
+                  >
+                    {userData.name || userData.email}
+                  </Chip>
+                ))}
+              </View>
+
+              <Text variant="titleMedium" style={{ marginBottom: 8 }}>Por tiempo</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {[
+                  { value: 'all', label: 'Todas' },
+                  { value: 'overdue', label: 'Vencidas' },
+                  { value: 'today', label: 'Hoy' },
+                  { value: 'upcoming', label: 'Próximas' },
+                ].map((opt) => (
+                  <Chip
+                    key={opt.value}
+                    selected={filterTime === opt.value}
+                    onPress={() => setFilterTime(opt.value as any)}
+                    style={styles.filterChip}
+                  >
+                    {opt.label}
+                  </Chip>
+                ))}
+              </View>
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setShowFilterMenu(false)}>Cerrar</Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+
         {tasks.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
             <Text style={{ marginBottom: 12 }}>No hay tareas aún</Text>
             <Button mode="outlined" onPress={seedQuickTask}>Cargar ejemplo</Button>
+          </View>
+        ) : tasksToRender.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <Text style={{ marginBottom: 12 }}>No hay tareas que coincidan con los filtros</Text>
+            {hasActiveFilters && (
+              <Button mode="outlined" onPress={clearFilters}>Limpiar filtros</Button>
+            )}
           </View>
         ) : (
           <FlatList
@@ -277,7 +488,7 @@ export default function TaskListScreen({ navigation }: Props) {
 }
 
 // Componente para botones con efecto hover/press en naranja
-function IconButtonWithFeedback({ icon, onPress }: { icon: string; onPress: () => void }) {
+function IconButtonWithFeedback({ icon, onPress, badge }: { icon: string; onPress: () => void; badge?: number }) {
   const [pressed, setPressed] = React.useState(false);
 
   return (
@@ -293,7 +504,14 @@ function IconButtonWithFeedback({ icon, onPress }: { icon: string; onPress: () =
       ]}
       activeOpacity={0.7}
     >
-      <Appbar.Action icon={icon} color={pressed ? BRAND_COLORS.primary : undefined} />
+      <View style={{ position: 'relative' }}>
+        <Appbar.Action icon={icon} color={pressed ? BRAND_COLORS.primary : undefined} />
+        {badge !== undefined && badge > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -322,6 +540,38 @@ const styles = StyleSheet.create({
   },
   iconButtonPressed: {
     backgroundColor: BRAND_COLORS.primary + '20', // 20% opacity
+  },
+  filtersContainer: {
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  filtersScroll: {
+    paddingHorizontal: 12,
+  },
+  filterChip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: BRAND_COLORS.red,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
 });
 

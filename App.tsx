@@ -62,21 +62,55 @@ export default function App() {
     checkForUpdates();
   }, []);
 
-  // Manejar el estado de autenticación de Firebase
+  // Manejar el estado de autenticación de Firebase y mantener sesión activa
   useEffect(() => {
     if (!ready) return;
 
+    let tokenRefreshInterval: NodeJS.Timeout | null = null;
+
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
+        // Registrar token de notificaciones
         const token = await registerForPushNotificationsAsync();
         if (token) {
           try {
             await updateDoc(doc(db, 'users', u.uid), { expoPushToken: token });
           } catch {}
         }
+
+        // Renovar token de autenticación cada 50 minutos para mantener sesión activa
+        // Firebase Auth tokens expiran después de 1 hora, pero se renuevan automáticamente
+        // Esto asegura que la sesión no se cierre por inactividad
+        const renewToken = async () => {
+          try {
+            // Obtener el token actual para forzar su renovación si es necesario
+            await u.getIdToken(true); // true = forzar refresh
+            if (__DEV__) {
+              console.log('Token de autenticación renovado');
+            }
+          } catch (error) {
+            console.warn('Error al renovar token:', error);
+          }
+        };
+
+        // Renovar inmediatamente y luego cada 50 minutos
+        renewToken();
+        tokenRefreshInterval = setInterval(renewToken, 50 * 60 * 1000); // 50 minutos
+      } else {
+        // Si el usuario cierra sesión, limpiar el intervalo
+        if (tokenRefreshInterval) {
+          clearInterval(tokenRefreshInterval);
+          tokenRefreshInterval = null;
+        }
       }
     });
-    return () => unsub();
+
+    return () => {
+      unsub();
+      if (tokenRefreshInterval) {
+        clearInterval(tokenRefreshInterval);
+      }
+    };
   }, [ready]);
 
   // Mostrar loading inicial o modal de actualización
