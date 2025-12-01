@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
-import { Provider as PaperProvider } from 'react-native-paper';
+import { Provider as PaperProvider, Text } from 'react-native-paper';
+import { View, StyleSheet } from 'react-native';
 import * as Updates from 'expo-updates';
 import RootNavigator from './src/navigation/index.tsx';
 import { theme } from './src/theme.ts';
@@ -15,6 +16,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateMessage, setUpdateMessage] = useState('Actualizando app...');
+  const [configError, setConfigError] = useState<string | null>(null);
 
   // Verificar y descargar actualizaciones al iniciar la app
   useEffect(() => {
@@ -66,6 +68,17 @@ export default function App() {
   useEffect(() => {
     if (!ready) return;
 
+    // Verificar que Firebase esté configurado correctamente
+    try {
+      // Intentar acceder a auth para verificar que esté inicializado
+      if (!auth) {
+        throw new Error('Firebase Auth no está inicializado');
+      }
+    } catch (error: any) {
+      setConfigError(error?.message || 'Error al inicializar Firebase');
+      return;
+    }
+
     let tokenRefreshInterval: NodeJS.Timeout | null = null;
 
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -113,6 +126,27 @@ export default function App() {
     };
   }, [ready]);
 
+  // Mostrar error de configuración si hay problema con Firebase
+  if (configError) {
+    return (
+      <PaperProvider theme={theme}>
+        <View style={styles.errorContainer}>
+          <Text variant="headlineSmall" style={styles.errorTitle}>
+            ⚠️ Error de Configuración
+          </Text>
+          <Text variant="bodyMedium" style={styles.errorText}>
+            {configError}
+          </Text>
+          <Text variant="bodySmall" style={styles.errorHint}>
+            {'\n'}Para desarrollo local, crea un archivo .env en la raíz del proyecto.{'\n'}
+            Verifica GUIA_CONFIGURACION_EAS.md para más información.
+          </Text>
+        </View>
+        <StatusBar style="dark" />
+      </PaperProvider>
+    );
+  }
+
   // Mostrar loading inicial o modal de actualización
   if (!ready) {
     return (
@@ -131,3 +165,29 @@ export default function App() {
     </PaperProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  errorTitle: {
+    marginBottom: 16,
+    color: '#e53935',
+    textAlign: 'center',
+  },
+  errorText: {
+    marginBottom: 8,
+    color: '#1a1a1a',
+    textAlign: 'center',
+  },
+  errorHint: {
+    marginTop: 16,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+});
