@@ -85,10 +85,14 @@ export default function LoginScreen({ navigation }: Props) {
 
     setResetPasswordLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email.trim());
+      // Usar ActionCodeSettings para personalizar la URL de redirección
+      await sendPasswordResetEmail(auth, email.trim(), {
+        url: 'https://muros-checklist.firebaseapp.com/__/auth/action',
+        handleCodeInApp: false, // Abre en navegador, no en la app
+      });
       Alert.alert(
         'Correo enviado',
-        'Se ha enviado un correo electrónico para restablecer tu contraseña. Revisa tu bandeja de entrada.',
+        'Se ha enviado un correo electrónico para restablecer tu contraseña. Revisa tu bandeja de entrada (y la carpeta de spam si no lo encuentras).',
         [{ text: 'OK' }]
       );
     } catch (e: any) {

@@ -164,20 +164,6 @@ export default function TaskListScreen({ navigation }: Props) {
     await deleteDoc(doc(db, 'tasks', task.id));
   };
 
-  const seedQuickTask = async () => {
-    if (!user) return;
-    await addDoc(collection(db, 'tasks'), {
-      title: 'Tarea de ejemplo',
-      description: 'Puedes editarla o borrarla',
-      color: '#f07e0e',
-      colorLabel: 'PRIORIDAD',
-      done: false,
-      companyId: COMPANY_ID,
-      assigneeUid: user.uid,
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-    });
-  };
 
   // Aplicar filtros a las tareas
   const filteredTasks = useMemo(() => {
@@ -795,7 +781,9 @@ export default function TaskListScreen({ navigation }: Props) {
         {tasks.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
             <Text style={{ marginBottom: 12 }}>No hay tareas aún</Text>
-            <Button mode="outlined" onPress={seedQuickTask}>Cargar ejemplo</Button>
+            <Text variant="bodySmall" style={{ color: '#666', textAlign: 'center' }}>
+              Presiona el botón + para crear tu primera tarea
+            </Text>
           </View>
         ) : tasksToRender.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
