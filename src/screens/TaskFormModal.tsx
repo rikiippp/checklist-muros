@@ -24,6 +24,7 @@ export default function TaskFormModal({ navigation }: Props) {
   const [members, setMembers] = useState<{ uid: string; email: string; name?: string }[]>([]);
   const [assignAll, setAssignAll] = useState(true);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [requiresAttachment, setRequiresAttachment] = useState(false);
 
   React.useEffect(() => {
     const load = async () => {
@@ -66,6 +67,7 @@ export default function TaskFormModal({ navigation }: Props) {
         createdAt: serverTimestamp(),
         dueDate: dueDateTimestamp,
         forAll,
+        requiresAttachment,
       });
 
       // Programar notificaciones de fecha límite si hay dueDate
@@ -200,6 +202,18 @@ export default function TaskFormModal({ navigation }: Props) {
         <Button mode="outlined" onPress={() => setSelectAssigneeOpen(true)}>
           {assignAll ? 'Para todos' : (members.find(m => m.uid === selectedUid)?.name || members.find(m => m.uid === selectedUid)?.email || 'Elegir miembro')}
         </Button>
+
+        {/* Requerir archivo adjunto al completar */}
+        <View style={{ marginTop: 16 }}>
+          <Checkbox.Item
+            label="Requerir archivo adjunto al completar esta tarea"
+            status={requiresAttachment ? 'checked' : 'unchecked'}
+            onPress={() => setRequiresAttachment((v) => !v)}
+          />
+          <Text variant="bodySmall" style={{ color: '#666', marginLeft: 8, marginTop: -8 }}>
+            El asignado (o un admin) deberá subir al menos un archivo (ej: presupuesto, foto, PDF) para poder marcarla como completada.
+          </Text>
+        </View>
 
         <Portal>
           <Dialog visible={selectAssigneeOpen} onDismiss={() => setSelectAssigneeOpen(false)}>

@@ -13,11 +13,29 @@ type Props = {
   dueDate?: any;
   assignedToLabel?: string;
   canDelete?: boolean;
+  requiresAttachment?: boolean;
+  hasAttachments?: boolean;
+  onAttachPress?: () => void;
   onToggleDone: () => void;
   onDelete: () => void;
 };
 
-export default function TaskItem({ title, description, color, colorLabel, done, createdAt, dueDate, assignedToLabel, canDelete = true, onToggleDone, onDelete }: Props) {
+export default function TaskItem({
+  title,
+  description,
+  color,
+  colorLabel,
+  done,
+  createdAt,
+  dueDate,
+  assignedToLabel,
+  canDelete = true,
+  requiresAttachment,
+  hasAttachments,
+  onAttachPress,
+  onToggleDone,
+  onDelete,
+}: Props) {
   const formatDate = (tsOrDate?: any) => {
     try {
       if (!tsOrDate) return '';
@@ -123,6 +141,30 @@ export default function TaskItem({ title, description, color, colorLabel, done, 
             </View>
           )}
           {done && <Text variant="bodySmall" style={{ color: '#2e7d32', fontWeight: '600', marginTop: 6 }}>Completado</Text>}
+
+          {/* Adjuntos */}
+          {(requiresAttachment || hasAttachments) && (
+            <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+              {requiresAttachment && (
+                <Text
+                  variant="bodySmall"
+                  style={{ color: hasAttachments ? '#2e7d32' : '#d32f2f', marginRight: 8 }}
+                >
+                  {hasAttachments ? '📎 Archivo adjunto cargado' : '📎 Falta adjuntar archivo'}
+                </Text>
+              )}
+              {onAttachPress && (
+                <Button
+                  mode="text"
+                  compact
+                  onPress={onAttachPress}
+                  textColor={hasAttachments ? BRAND_COLORS.primary : '#d32f2f'}
+                >
+                  {hasAttachments ? 'Ver / agregar adjunto' : 'Adjuntar archivo'}
+                </Button>
+              )}
+            </View>
+          )}
         </View>
         {canDelete && (
           <TouchableOpacity

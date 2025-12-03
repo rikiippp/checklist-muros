@@ -5,13 +5,15 @@ import { Alert } from 'react-native';
 import { Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/index.tsx';
-import { auth, db } from '../firebase/index.ts';
+import { auth, db, storage } from '../firebase/index.ts';
 import type { User } from 'firebase/auth';
-import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, addDoc, getDoc, onSnapshot as onSnapshotUsers, Timestamp } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, addDoc, getDoc, onSnapshot as onSnapshotUsers, Timestamp, arrayUnion } from 'firebase/firestore';
 import TaskItem from '../components/TaskItem.tsx';
 import { COLOR_LABELS, BRAND_COLORS, COLOR_OPTIONS } from '../theme.ts';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
 import { scheduleNotificationsForTask } from '../services/taskNotifications.ts';
+import * as DocumentPicker from 'expo-document-picker';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Tasks'>;
@@ -44,6 +46,12 @@ export default function TaskListScreen({ navigation }: Props) {
   const [filterPerson, setFilterPerson] = useState<string | null>(null);
   const [filterTime, setFilterTime] = useState<'all' | 'overdue' | 'today' | 'upcoming'>('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+
+  // Adjuntos requeridos
+  const [attachmentTask, setAttachmentTask] = useState<Task | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<{ uri: string; name: string; size?: number; mimeType?: string } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -105,6 +113,17 @@ export default function TaskListScreen({ navigation }: Props) {
   }, [user, navigation]);
 
   const toggleDone = async (task: Task) => {
+    // Si la tarea requiere adjunto y aún no tiene, abrir modal de adjuntos
+    const requiresAttachment = (task as any).requiresAttachment === true;
+    const attachments = (task as any).attachments as any[] | undefined;
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+    if (!task.done && requiresAttachment && !hasAttachments) {
+      setAttachmentTask(task);
+      setSelectedAttachment(null);
+      setAttachmentError(null);
+      return;
+    }
+
     // Si se está marcando como completada, agregar delay antes de actualizar
     if (!task.done) {
       setCompletingTaskId(task.id);
@@ -236,21 +255,107 @@ export default function TaskListScreen({ navigation }: Props) {
   // Verificar si hay filtros activos
   const hasActiveFilters = filterPriority !== null || filterPerson !== null || filterTime !== 'all';
 
-  const renderItem = ({ item }: { item: Task }) => (
-    <TaskItem
-      title={item.title}
-      description={item.description}
-      color={item.color}
-      colorLabel={item.colorLabel || COLOR_LABELS[item.color]}
-      done={item.done || completingTaskId === item.id}
-      createdAt={item.createdAt}
-      dueDate={item.dueDate}
-      assignedToLabel={(item as any).forAll ? 'Todos' : (item.assigneeUid ? (userMap[item.assigneeUid]?.name || userMap[item.assigneeUid]?.email || 'Asignado') : '')}
-      canDelete={(userRole === 'admin') || (!!user && item.createdBy === user.uid && !(item as any).forAll) || undefined}
-      onToggleDone={() => toggleDone(item)}
-      onDelete={() => removeTask(item)}
-    />
-  );
+  const handlePickAttachment = async () => {
+    try {
+      setAttachmentError(null);
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const file = result.assets[0];
+      const size = file.size ?? 0;
+      const maxBytes = 20 * 1024 * 1024; // 20MB
+      if (size > maxBytes) {
+        setAttachmentError('El archivo supera el máximo de 20MB. Por favor, elige uno más liviano.');
+        return;
+      }
+      setSelectedAttachment({
+        uri: file.uri,
+        name: file.name ?? 'archivo',
+        size,
+        mimeType: file.mimeType,
+      });
+    } catch (error) {
+      setAttachmentError('No se pudo seleccionar el archivo. Intenta de nuevo.');
+    }
+  };
+
+  const handleUploadAttachmentAndComplete = async () => {
+    if (!attachmentTask || !selectedAttachment) {
+      setAttachmentError('Primero selecciona un archivo para adjuntar.');
+      return;
+    }
+    if (!user) {
+      setAttachmentError('Debes iniciar sesión para adjuntar archivos.');
+      return;
+    }
+    try {
+      setAttachmentUploading(true);
+      setAttachmentError(null);
+
+      const response = await fetch(selectedAttachment.uri);
+      const blob = await response.blob();
+
+      const storageRef = ref(storage, `tasks/${attachmentTask.id}/${Date.now()}-${selectedAttachment.name}`);
+      await uploadBytes(storageRef, blob, {
+        contentType: selectedAttachment.mimeType,
+      });
+      const url = await getDownloadURL(storageRef);
+
+      await updateDoc(doc(db, 'tasks', attachmentTask.id), {
+        attachments: arrayUnion({
+          name: selectedAttachment.name,
+          url,
+          size: selectedAttachment.size ?? null,
+          uploadedBy: user.uid,
+          uploadedAt: serverTimestamp(),
+        }),
+      });
+
+      const t = attachmentTask;
+      setAttachmentTask(null);
+      setSelectedAttachment(null);
+
+      // Ahora sí completar la tarea (ya tiene adjunto)
+      await toggleDone(t);
+    } catch (error) {
+      setAttachmentError('Error al subir el archivo. Verifica tu conexión e intenta de nuevo.');
+    } finally {
+      setAttachmentUploading(false);
+    }
+  };
+
+  const openAttachmentModal = (task: Task) => {
+    setAttachmentTask(task);
+    setSelectedAttachment(null);
+    setAttachmentError(null);
+  };
+
+  const renderItem = ({ item }: { item: Task }) => {
+    const requiresAttachment = (item as any).requiresAttachment === true;
+    const attachments = (item as any).attachments as any[] | undefined;
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+
+    return (
+      <TaskItem
+        title={item.title}
+        description={item.description}
+        color={item.color}
+        colorLabel={item.colorLabel || COLOR_LABELS[item.color]}
+        done={item.done || completingTaskId === item.id}
+        createdAt={item.createdAt}
+        dueDate={item.dueDate}
+        assignedToLabel={(item as any).forAll ? 'Todos' : (item.assigneeUid ? (userMap[item.assigneeUid]?.name || userMap[item.assigneeUid]?.email || 'Asignado') : '')}
+        canDelete={(userRole === 'admin') || (!!user && item.createdBy === user.uid && !(item as any).forAll) || undefined}
+        requiresAttachment={requiresAttachment}
+        hasAttachments={hasAttachments}
+        onAttachPress={requiresAttachment ? () => openAttachmentModal(item) : undefined}
+        onToggleDone={() => toggleDone(item)}
+        onDelete={() => removeTask(item)}
+      />
+    );
+  };
 
   // Obtener saludo con emoji y texto según la hora del día
   const getGreeting = () => {
@@ -350,8 +455,9 @@ export default function TaskListScreen({ navigation }: Props) {
           </View>
         )}
 
-        {/* Modal de filtros */}
+        {/* Modales */}
         <Portal>
+          {/* Modal de filtros */}
           <Dialog visible={showFilterMenu} onDismiss={() => setShowFilterMenu(false)}>
             <Dialog.Title>Filtrar tareas</Dialog.Title>
             <Dialog.Content>
@@ -412,6 +518,53 @@ export default function TaskListScreen({ navigation }: Props) {
             </Dialog.Content>
             <Dialog.Actions>
               <Button onPress={() => setShowFilterMenu(false)}>Cerrar</Button>
+            </Dialog.Actions>
+          </Dialog>
+
+          {/* Modal de adjuntar archivo cuando es obligatorio */}
+          <Dialog visible={!!attachmentTask} onDismiss={() => setAttachmentTask(null)}>
+            <Dialog.Title>Adjuntar archivo</Dialog.Title>
+            <Dialog.Content>
+              <Text variant="titleMedium" style={{ marginBottom: 8 }}>
+                {(attachmentTask as any)?.title || 'Tarea'}
+              </Text>
+              <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666' }}>
+                Esta tarea requiere al menos un archivo adjunto para poder marcarse como completada.
+              </Text>
+
+              <Button
+                mode="outlined"
+                onPress={handlePickAttachment}
+                disabled={attachmentUploading}
+                style={{ marginBottom: 8 }}
+              >
+                Elegir archivo
+              </Button>
+
+              {selectedAttachment && (
+                <Text variant="bodySmall" style={{ marginBottom: 4 }}>
+                  Seleccionado: {selectedAttachment.name}
+                </Text>
+              )}
+
+              {attachmentError && (
+                <Text variant="bodySmall" style={{ color: '#d32f2f', marginTop: 4 }}>
+                  {attachmentError}
+                </Text>
+              )}
+            </Dialog.Content>
+            <Dialog.Actions>
+              <Button onPress={() => setAttachmentTask(null)} disabled={attachmentUploading}>
+                Cancelar
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleUploadAttachmentAndComplete}
+                loading={attachmentUploading}
+                disabled={attachmentUploading || !selectedAttachment}
+              >
+                Adjuntar y completar
+              </Button>
             </Dialog.Actions>
           </Dialog>
         </Portal>

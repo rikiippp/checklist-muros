@@ -29,6 +29,7 @@ export default function CompletedTasksScreen({ navigation }: Props) {
   const user = auth.currentUser;
   const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
   const [userMap, setUserMap] = useState<Record<string, { name?: string; email?: string }>>({});
+  const [filterTime, setFilterTime] = useState<'all' | '7' | '30'>('all');
 
   useEffect(() => {
     if (!user) {
@@ -79,21 +80,61 @@ export default function CompletedTasksScreen({ navigation }: Props) {
     await deleteDoc(doc(db, 'tasks', task.id));
   };
 
-  const renderItem = ({ item }: { item: Task }) => (
-    <TaskItem
-      title={item.title}
-      description={item.description}
-      color={item.color}
-      colorLabel={item.colorLabel || COLOR_LABELS[item.color]}
-      done={item.done}
-      createdAt={item.createdAt}
-      dueDate={(item as any).dueDate}
-      assignedToLabel={(item as any).forAll ? 'Todos' : (item.assigneeUid ? (userMap[item.assigneeUid]?.name || userMap[item.assigneeUid]?.email || 'Asignado') : '')}
-      canDelete={(userRole === 'admin') || (user && item.createdBy === (user as any).uid && !(item as any).forAll) || undefined}
-      onToggleDone={() => toggleDone(item)}
-      onDelete={() => removeTask(item)}
-    />
-  );
+  const renderItem = ({ item }: { item: Task }) => {
+    const attachments = (item as any).attachments as any[] | undefined;
+    const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+
+    return (
+      <View>
+        <TaskItem
+          title={item.title}
+          description={item.description}
+          color={item.color}
+          colorLabel={item.colorLabel || COLOR_LABELS[item.color]}
+          done={item.done}
+          createdAt={item.createdAt}
+          dueDate={(item as any).dueDate}
+          assignedToLabel={(item as any).forAll ? 'Todos' : (item.assigneeUid ? (userMap[item.assigneeUid]?.name || userMap[item.assigneeUid]?.email || 'Asignado') : '')}
+          canDelete={(userRole === 'admin') || (user && item.createdBy === (user as any).uid && !(item as any).forAll) || undefined}
+          onToggleDone={() => toggleDone(item)}
+          onDelete={() => removeTask(item)}
+        />
+        {hasAttachments && (
+          <Text
+            variant="bodySmall"
+            style={{
+              marginHorizontal: 20,
+              marginTop: -6,
+              marginBottom: 8,
+              color: '#555',
+              fontStyle: 'italic',
+            }}
+          >
+            📎 Esta tarea tiene archivos adjuntos ({attachments.length}).
+          </Text>
+        )}
+      </View>
+    );
+  };
+
+  const filteredTasks = (() => {
+    if (filterTime === 'all') return tasks;
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    const days = filterTime === '7' ? 7 : 30;
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() - days);
+
+    return tasks.filter((t) => {
+      const created = (t.createdAt as any) || null;
+      if (!created) return true;
+      const d = typeof (created as any).toDate === 'function' ? (created as any).toDate() : new Date(created);
+      d.setHours(0, 0, 0, 0);
+      return d >= cutoff;
+    });
+  })();
 
   return (
     <View style={{ flex: 1 }}>
@@ -101,13 +142,42 @@ export default function CompletedTasksScreen({ navigation }: Props) {
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title="Completadas" />
       </Appbar.Header>
-      {tasks.length === 0 ? (
+
+      {/* Filtros por tiempo */}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#f5f5f5', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' }}>
+        <Text variant="bodySmall" style={{ marginBottom: 4, color: '#666' }}>Filtrar por fecha de creación</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          {([
+            { value: 'all', label: 'Todas' },
+            { value: '7', label: 'Últimos 7 días' },
+            { value: '30', label: 'Últimos 30 días' },
+          ] as const).map((opt) => (
+            <Text
+              key={opt.value}
+              onPress={() => setFilterTime(opt.value)}
+              style={{
+                marginRight: 12,
+                paddingVertical: 4,
+                fontSize: 12,
+                color: filterTime === opt.value ? '#fff' : '#555',
+                backgroundColor: filterTime === opt.value ? '#f07e0e' : 'transparent',
+                borderRadius: 12,
+                paddingHorizontal: 10,
+              }}
+            >
+              {opt.label}
+            </Text>
+          ))}
+        </View>
+      </View>
+
+      {filteredTasks.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <Text>No hay tareas completadas aún</Text>
+          <Text>No hay tareas completadas en este rango</Text>
         </View>
       ) : (
         <FlatList
-          data={tasks}
+          data={filteredTasks}
           keyExtractor={(t) => t.id}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 12 }}
