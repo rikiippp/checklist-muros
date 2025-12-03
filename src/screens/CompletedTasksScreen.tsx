@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, View } from 'react-native';
-import { Appbar, Text } from 'react-native-paper';
+import { FlatList, View, TouchableOpacity, Linking, Alert } from 'react-native';
+import { Appbar, Text, Button } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/index.tsx';
 import { auth, db } from '../firebase/index.ts';
@@ -80,6 +80,111 @@ export default function CompletedTasksScreen({ navigation }: Props) {
     await deleteDoc(doc(db, 'tasks', task.id));
   };
 
+  const getViewUrl = (url: string, name: string): string => {
+    // URL para visualizar (sin fl_attachment)
+    if (url.includes('cloudinary.com')) {
+      // Removemos fl_attachment si existe
+      let viewUrl = url.replace('/fl_attachment/', '/');
+      // Aseguramos que use /raw/upload/ para PDFs
+      if (name.toLowerCase().endsWith('.pdf') || url.includes('.pdf')) {
+        if (viewUrl.includes('/image/upload/')) {
+          viewUrl = viewUrl.replace('/image/upload/', '/raw/upload/');
+        } else if (viewUrl.includes('/auto/upload/')) {
+          viewUrl = viewUrl.replace('/auto/upload/', '/raw/upload/');
+        } else if (viewUrl.includes('/upload/') && !viewUrl.includes('/raw/upload/')) {
+          viewUrl = viewUrl.replace('/upload/', '/raw/upload/');
+        }
+      }
+      return viewUrl;
+    }
+    return url;
+  };
+
+  const getDownloadUrl = (url: string, name: string): string => {
+    // URL para descargar (con fl_attachment)
+    if (url.includes('cloudinary.com')) {
+      let downloadUrl = url;
+      const isPDF = name.toLowerCase().endsWith('.pdf') || url.includes('.pdf');
+      
+      if (isPDF) {
+        if (downloadUrl.includes('/raw/upload/')) {
+          if (!downloadUrl.includes('fl_attachment')) {
+            downloadUrl = downloadUrl.replace('/raw/upload/', '/raw/upload/fl_attachment/');
+          }
+        } else if (downloadUrl.includes('/image/upload/')) {
+          downloadUrl = downloadUrl.replace('/image/upload/', '/raw/upload/fl_attachment/');
+        } else if (downloadUrl.includes('/auto/upload/')) {
+          downloadUrl = downloadUrl.replace('/auto/upload/', '/raw/upload/fl_attachment/');
+        } else if (downloadUrl.includes('/upload/') && !downloadUrl.includes('/raw/upload/')) {
+          downloadUrl = downloadUrl.replace('/upload/', '/raw/upload/fl_attachment/');
+        }
+      }
+      return downloadUrl;
+    }
+    return url;
+  };
+
+  const handleOpenAttachment = async (url: string, name: string) => {
+    // Mostrar diálogo con opciones: Ver o Descargar
+    Alert.alert(
+      name,
+      '¿Qué deseas hacer con este archivo?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Ver',
+          onPress: async () => {
+            try {
+              const viewUrl = getViewUrl(url, name);
+              if (__DEV__) {
+                console.log('Intentando ver archivo:', name);
+                console.log('URL para ver:', viewUrl);
+              }
+              const canOpen = await Linking.canOpenURL(viewUrl);
+              if (canOpen) {
+                await Linking.openURL(viewUrl);
+              } else {
+                Alert.alert('Error', 'No se pudo abrir el archivo para visualización.');
+              }
+            } catch (error: any) {
+              if (__DEV__) {
+                console.error('Error al ver archivo:', error);
+              }
+              Alert.alert('Error', `No se pudo abrir el archivo: ${error?.message || ''}`);
+            }
+          },
+        },
+        {
+          text: 'Descargar',
+          onPress: async () => {
+            try {
+              const downloadUrl = getDownloadUrl(url, name);
+              if (__DEV__) {
+                console.log('Intentando descargar archivo:', name);
+                console.log('URL para descargar:', downloadUrl);
+              }
+              const canOpen = await Linking.canOpenURL(downloadUrl);
+              if (canOpen) {
+                await Linking.openURL(downloadUrl);
+              } else {
+                Alert.alert('Error', 'No se pudo descargar el archivo.');
+              }
+            } catch (error: any) {
+              if (__DEV__) {
+                console.error('Error al descargar archivo:', error);
+              }
+              Alert.alert('Error', `No se pudo descargar el archivo: ${error?.message || ''}`);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   const renderItem = ({ item }: { item: Task }) => {
     const attachments = (item as any).attachments as any[] | undefined;
     const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
@@ -100,18 +205,68 @@ export default function CompletedTasksScreen({ navigation }: Props) {
           onDelete={() => removeTask(item)}
         />
         {hasAttachments && (
-          <Text
-            variant="bodySmall"
+          <View
             style={{
               marginHorizontal: 20,
               marginTop: -6,
               marginBottom: 8,
-              color: '#555',
-              fontStyle: 'italic',
+              padding: 12,
+              backgroundColor: '#f5f5f5',
+              borderRadius: 8,
+              borderLeftWidth: 3,
+              borderLeftColor: '#f07e0e',
             }}
           >
-            📎 Esta tarea tiene archivos adjuntos ({attachments.length}).
-          </Text>
+            <Text
+              variant="bodySmall"
+              style={{
+                color: '#666',
+                marginBottom: 8,
+                fontWeight: '600',
+              }}
+            >
+              📎 Archivos adjuntos ({attachments.length})
+            </Text>
+            {attachments.map((attachment: any, index: number) => (
+              <TouchableOpacity
+                key={index}
+                onPress={() => handleOpenAttachment(attachment.url, attachment.name || 'Archivo')}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 8,
+                  paddingHorizontal: 8,
+                  backgroundColor: '#fff',
+                  borderRadius: 6,
+                  marginBottom: 6,
+                  borderWidth: 1,
+                  borderColor: '#e0e0e0',
+                }}
+              >
+                <Text
+                  variant="bodySmall"
+                  style={{
+                    flex: 1,
+                    color: '#1976d2',
+                    textDecorationLine: 'underline',
+                  }}
+                  numberOfLines={1}
+                >
+                  {attachment.name || `Archivo ${index + 1}`}
+                </Text>
+                <Text
+                  variant="bodySmall"
+                  style={{
+                    color: '#999',
+                    marginLeft: 8,
+                    fontSize: 10,
+                  }}
+                >
+                  👁️ Abrir
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         )}
       </View>
     );

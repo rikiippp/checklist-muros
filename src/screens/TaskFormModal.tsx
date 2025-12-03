@@ -29,7 +29,8 @@ export default function TaskFormModal({ navigation }: Props) {
   React.useEffect(() => {
     const load = async () => {
       const snap = await getDocs(query(collection(db, 'users'), where('companyId', '==', COMPANY_ID)));
-      setMembers(snap.docs.map((d) => d.data() as any));
+      // Guardamos también el uid del documento para reutilizarlo sin nuevas consultas
+      setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) })));
     };
     load();
   }, []);
@@ -44,8 +45,13 @@ export default function TaskFormModal({ navigation }: Props) {
       let assigneeUid: string | null = null;
       let forAll = false;
       if (assignAll || !selectedUid) {
-        const allSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', COMPANY_ID)));
-        participants = Array.from(new Set(allSnap.docs.map((d) => d.id)));
+        // Reutilizar miembros ya cargados para no hacer otra consulta
+        if (members.length > 0) {
+          participants = Array.from(new Set(members.map((m) => m.uid)));
+        } else {
+          const allSnap = await getDocs(query(collection(db, 'users'), where('companyId', '==', COMPANY_ID)));
+          participants = Array.from(new Set(allSnap.docs.map((d) => d.id)));
+        }
         forAll = true;
       } else {
         participants = Array.from(new Set([user.uid, selectedUid]));
@@ -79,78 +85,66 @@ export default function TaskFormModal({ navigation }: Props) {
         }
       }
 
-      // Notificaciones inmediatas: enviar notificaciones locales y push a los participantes
-      try {
-        const tokens: string[] = [];
-        const userNames: Record<string, string> = {};
-        
-        // Obtener tokens y nombres de los participantes (excepto el creador)
-        for (const uid of participants) {
-          if (uid === user.uid) continue;
-          const udoc = await getDoc(doc(db, 'users', uid));
-          const userData = udoc.data() as any;
-          const t = userData?.expoPushToken;
-          if (t) tokens.push(t);
-          // Guardar nombre para la notificación
-          userNames[uid] = userData?.name || userData?.email?.split('@')[0] || 'Usuario';
-        }
+      // Notificaciones inmediatas: enviarlas en segundo plano para no bloquear la creación
+      (async () => {
+        try {
+          const tokens: string[] = [];
 
-        // Enviar notificaciones push a todos los participantes (excepto el creador)
-        // Estas notificaciones llegan a todos los dispositivos, incluso los que no usan Expo Go
-        if (tokens.length > 0) {
-          // Enviar todas las notificaciones push de forma paralela y esperar a que se completen
-          // Esto asegura que se envíen inmediatamente sin retrasos
-          const pushPromises = tokens.map(async (to) => {
-            try {
-              const response = await fetch('https://exp.host/--/api/v2/push/send', {
-                method: 'POST',
-                headers: {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  to,
-                  sound: 'default',
-                  title: '📋 Nueva tarea asignada',
-                  body: `Se te asignó: "${title.trim()}"`,
-                  data: { taskId: taskRef.id, type: 'new-task' },
-                  priority: 'high',
-                  channelId: 'default',
-                }),
-              });
-              
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-              
-              const result = await response.json();
-              if (__DEV__) {
-                console.log('Notificación push enviada:', result);
-              }
-              return result;
-            } catch (err) {
-              console.warn('Error al enviar notificación push individual:', err);
-              throw err;
-            }
+          // Reutilizar miembros en memoria siempre que sea posible
+          const membersById: Record<string, any> = {};
+          members.forEach((m) => {
+            membersById[m.uid] = m;
           });
 
-          // Esperar a que todas las notificaciones se envíen (con timeout de 10 segundos)
-          try {
-            await Promise.race([
-              Promise.allSettled(pushPromises),
-              new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Timeout en notificaciones push')), 10000)
-              )
-            ]);
-          } catch (error) {
-            // Si hay timeout o error, no bloquear el flujo pero loguear
-            console.warn('Algunas notificaciones push pueden no haberse enviado:', error);
+          for (const uid of participants) {
+            if (uid === user.uid) continue;
+            let userData: any = membersById[uid];
+            if (!userData) {
+              const udoc = await getDoc(doc(db, 'users', uid));
+              userData = udoc.data() as any;
+            }
+            const t = userData?.expoPushToken;
+            if (t) tokens.push(t);
+          }
+
+          if (tokens.length === 0) return;
+
+          await Promise.allSettled(
+            tokens.map(async (to) => {
+              try {
+                const response = await fetch('https://exp.host/--/api/v2/push/send', {
+                  method: 'POST',
+                  headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    to,
+                    sound: 'default',
+                    title: '📋 Nueva tarea asignada',
+                    body: `Se te asignó: "${title.trim()}"`,
+                    data: { taskId: taskRef.id, type: 'new-task' },
+                    priority: 'high',
+                    channelId: 'default',
+                  }),
+                });
+
+                if (!response.ok && __DEV__) {
+                  console.warn('Error HTTP al enviar notificación:', response.status);
+                }
+              } catch (err) {
+                if (__DEV__) {
+                  console.warn('Error al enviar notificación push individual:', err);
+                }
+              }
+            })
+          );
+        } catch (error) {
+          if (__DEV__) {
+            console.warn('Error al enviar notificaciones en segundo plano:', error);
           }
         }
-      } catch (error) {
-        // Log del error para debugging, pero no bloquear el flujo
-        console.warn('Error al enviar notificaciones:', error);
-      }
+      })();
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -249,5 +243,6 @@ export default function TaskFormModal({ navigation }: Props) {
     </View>
   );
 }
+
 
 

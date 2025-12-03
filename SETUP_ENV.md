@@ -18,6 +18,10 @@ EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=muros-checklist.firebasestorage.app
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=747167088223
 EXPO_PUBLIC_FIREBASE_APP_ID=1:747167088223:web:728ab217ea37bfe33225ea
 EXPO_PUBLIC_COMPANY_ID=muros
+
+# Cloudinary (adjuntos)
+EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME=dthp8pdsa
+EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET=checklist_muros_attachments
 ```
 
 ### Paso 3: Guardar y reiniciar
@@ -38,6 +42,8 @@ npm start
 | `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | ID del remitente de mensajería | Firebase Console > Configuración del proyecto > Cloud Messaging |
 | `EXPO_PUBLIC_FIREBASE_APP_ID` | ID de la aplicación | Firebase Console > Configuración del proyecto > General > Tus apps |
 | `EXPO_PUBLIC_COMPANY_ID` | Identificador de la empresa/equipo | Valor personalizado (ej: "muros") |
+| `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` | Nombre de tu cuenta de Cloudinary | Dashboard de Cloudinary |
+| `EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | Upload preset unsigned para adjuntos | Settings → Upload → Upload presets |
 
 ## 🔐 Seguridad
 

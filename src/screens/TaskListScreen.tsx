@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, View, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { FlatList, View, TouchableOpacity, StyleSheet, ScrollView, Linking } from 'react-native';
 import { Appbar, Button, FAB, Text, Chip, Menu, Portal, Dialog } from 'react-native-paper';
 import { Alert } from 'react-native';
 import { Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/index.tsx';
-import { auth, db, storage } from '../firebase/index.ts';
+import { auth, db } from '../firebase/index.ts';
 import type { User } from 'firebase/auth';
 import { collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, addDoc, getDoc, onSnapshot as onSnapshotUsers, Timestamp, arrayUnion } from 'firebase/firestore';
 import TaskItem from '../components/TaskItem.tsx';
@@ -13,7 +13,6 @@ import { COLOR_LABELS, BRAND_COLORS, COLOR_OPTIONS } from '../theme.ts';
 import { COMPANY_ID } from '../firebase/firebaseConfig.ts';
 import { scheduleNotificationsForTask } from '../services/taskNotifications.ts';
 import * as DocumentPicker from 'expo-document-picker';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Tasks'>;
@@ -281,7 +280,7 @@ export default function TaskListScreen({ navigation }: Props) {
     }
   };
 
-  const handleUploadAttachmentAndComplete = async () => {
+  const handleUploadAttachment = async () => {
     if (!attachmentTask || !selectedAttachment) {
       setAttachmentError('Primero selecciona un archivo para adjuntar.');
       return;
@@ -290,37 +289,88 @@ export default function TaskListScreen({ navigation }: Props) {
       setAttachmentError('Debes iniciar sesión para adjuntar archivos.');
       return;
     }
+
+    const cloudName = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+    if (!cloudName || !uploadPreset) {
+      setAttachmentError('Cloudinary no está configurado. Revisa las variables EXPO_PUBLIC_CLOUDINARY_*.');
+      return;
+    }
+
     try {
       setAttachmentUploading(true);
       setAttachmentError(null);
 
-      const response = await fetch(selectedAttachment.uri);
-      const blob = await response.blob();
+      // FormData para React Native - formato correcto
+      const formData = new FormData();
+      
+      // En React Native, el archivo debe tener este formato específico
+      formData.append('file', {
+        uri: selectedAttachment.uri,
+        name: selectedAttachment.name || 'file',
+        type: selectedAttachment.mimeType || 'application/octet-stream',
+      } as any);
+      
+      formData.append('upload_preset', uploadPreset);
+      formData.append('folder', 'tasks');
 
-      const storageRef = ref(storage, `tasks/${attachmentTask.id}/${Date.now()}-${selectedAttachment.name}`);
-      await uploadBytes(storageRef, blob, {
-        contentType: selectedAttachment.mimeType,
+      // Determinar el endpoint según el tipo de archivo
+      // Para PDFs y otros archivos no-imagen, usamos raw/upload
+      // Para imágenes, usamos auto/upload o image/upload
+      const isImage = selectedAttachment.mimeType?.startsWith('image/') || 
+                     selectedAttachment.name?.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i);
+      const uploadEndpoint = isImage 
+        ? `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`
+        : `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`;
+
+      const uploadRes = await fetch(uploadEndpoint, {
+        method: 'POST',
+        body: formData,
       });
-      const url = await getDownloadURL(storageRef);
 
+      if (!uploadRes.ok) {
+        const errorText = await uploadRes.text();
+        if (__DEV__) {
+          console.warn('Cloudinary error response:', errorText);
+        }
+        throw new Error(`Cloudinary error ${uploadRes.status}: ${errorText}`);
+      }
+
+      const data = await uploadRes.json();
+      const url: string | undefined = data.secure_url || data.url;
+      if (!url) {
+        throw new Error('Cloudinary no devolvió una URL válida.');
+      }
+
+      if (__DEV__) {
+        console.log('Archivo subido exitosamente a Cloudinary:', url);
+      }
+
+      // Guardar en Firestore
       await updateDoc(doc(db, 'tasks', attachmentTask.id), {
         attachments: arrayUnion({
           name: selectedAttachment.name,
           url,
           size: selectedAttachment.size ?? null,
           uploadedBy: user.uid,
-          uploadedAt: serverTimestamp(),
+          uploadedAt: Timestamp.now(),
         }),
       });
 
-      const t = attachmentTask;
+      if (__DEV__) {
+        console.log('Archivo guardado en Firestore para la tarea:', attachmentTask.id);
+      }
+
+      // Cerrar el modal y limpiar estados
       setAttachmentTask(null);
       setSelectedAttachment(null);
-
-      // Ahora sí completar la tarea (ya tiene adjunto)
-      await toggleDone(t);
-    } catch (error) {
-      setAttachmentError('Error al subir el archivo. Verifica tu conexión e intenta de nuevo.');
+      setAttachmentError(null);
+    } catch (error: any) {
+      if (__DEV__) {
+        console.warn('Error al subir archivo a Cloudinary:', error?.message || error);
+      }
+      setAttachmentError(`Error al subir el archivo: ${error?.message || 'Verifica tu conexión e intenta de nuevo.'}`);
     } finally {
       setAttachmentUploading(false);
     }
@@ -330,6 +380,111 @@ export default function TaskListScreen({ navigation }: Props) {
     setAttachmentTask(task);
     setSelectedAttachment(null);
     setAttachmentError(null);
+  };
+
+  const getViewUrl = (url: string, name: string): string => {
+    // URL para visualizar (sin fl_attachment)
+    if (url.includes('cloudinary.com')) {
+      // Removemos fl_attachment si existe
+      let viewUrl = url.replace('/fl_attachment/', '/');
+      // Aseguramos que use /raw/upload/ para PDFs
+      if (name.toLowerCase().endsWith('.pdf') || url.includes('.pdf')) {
+        if (viewUrl.includes('/image/upload/')) {
+          viewUrl = viewUrl.replace('/image/upload/', '/raw/upload/');
+        } else if (viewUrl.includes('/auto/upload/')) {
+          viewUrl = viewUrl.replace('/auto/upload/', '/raw/upload/');
+        } else if (viewUrl.includes('/upload/') && !viewUrl.includes('/raw/upload/')) {
+          viewUrl = viewUrl.replace('/upload/', '/raw/upload/');
+        }
+      }
+      return viewUrl;
+    }
+    return url;
+  };
+
+  const getDownloadUrl = (url: string, name: string): string => {
+    // URL para descargar (con fl_attachment)
+    if (url.includes('cloudinary.com')) {
+      let downloadUrl = url;
+      const isPDF = name.toLowerCase().endsWith('.pdf') || url.includes('.pdf');
+      
+      if (isPDF) {
+        if (downloadUrl.includes('/raw/upload/')) {
+          if (!downloadUrl.includes('fl_attachment')) {
+            downloadUrl = downloadUrl.replace('/raw/upload/', '/raw/upload/fl_attachment/');
+          }
+        } else if (downloadUrl.includes('/image/upload/')) {
+          downloadUrl = downloadUrl.replace('/image/upload/', '/raw/upload/fl_attachment/');
+        } else if (downloadUrl.includes('/auto/upload/')) {
+          downloadUrl = downloadUrl.replace('/auto/upload/', '/raw/upload/fl_attachment/');
+        } else if (downloadUrl.includes('/upload/') && !downloadUrl.includes('/raw/upload/')) {
+          downloadUrl = downloadUrl.replace('/upload/', '/raw/upload/fl_attachment/');
+        }
+      }
+      return downloadUrl;
+    }
+    return url;
+  };
+
+  const handleOpenAttachment = async (url: string, name: string) => {
+    // Mostrar diálogo con opciones: Ver o Descargar
+    Alert.alert(
+      name,
+      '¿Qué deseas hacer con este archivo?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Ver',
+          onPress: async () => {
+            try {
+              const viewUrl = getViewUrl(url, name);
+              if (__DEV__) {
+                console.log('Intentando ver archivo:', name);
+                console.log('URL para ver:', viewUrl);
+              }
+              const canOpen = await Linking.canOpenURL(viewUrl);
+              if (canOpen) {
+                await Linking.openURL(viewUrl);
+              } else {
+                Alert.alert('Error', 'No se pudo abrir el archivo para visualización.');
+              }
+            } catch (error: any) {
+              if (__DEV__) {
+                console.error('Error al ver archivo:', error);
+              }
+              Alert.alert('Error', `No se pudo abrir el archivo: ${error?.message || ''}`);
+            }
+          },
+        },
+        {
+          text: 'Descargar',
+          onPress: async () => {
+            try {
+              const downloadUrl = getDownloadUrl(url, name);
+              if (__DEV__) {
+                console.log('Intentando descargar archivo:', name);
+                console.log('URL para descargar:', downloadUrl);
+              }
+              const canOpen = await Linking.canOpenURL(downloadUrl);
+              if (canOpen) {
+                await Linking.openURL(downloadUrl);
+              } else {
+                Alert.alert('Error', 'No se pudo descargar el archivo.');
+              }
+            } catch (error: any) {
+              if (__DEV__) {
+                console.error('Error al descargar archivo:', error);
+              }
+              Alert.alert('Error', `No se pudo descargar el archivo: ${error?.message || ''}`);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const renderItem = ({ item }: { item: Task }) => {
@@ -523,13 +678,77 @@ export default function TaskListScreen({ navigation }: Props) {
 
           {/* Modal de adjuntar archivo cuando es obligatorio */}
           <Dialog visible={!!attachmentTask} onDismiss={() => setAttachmentTask(null)}>
-            <Dialog.Title>Adjuntar archivo</Dialog.Title>
+            <Dialog.Title>Archivos adjuntos</Dialog.Title>
             <Dialog.Content>
               <Text variant="titleMedium" style={{ marginBottom: 8 }}>
                 {(attachmentTask as any)?.title || 'Tarea'}
               </Text>
-              <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666' }}>
-                Esta tarea requiere al menos un archivo adjunto para poder marcarse como completada.
+              
+              {/* Mostrar archivos ya adjuntos */}
+              {(() => {
+                const existingAttachments = (attachmentTask as any)?.attachments as any[] | undefined;
+                const hasExistingAttachments = Array.isArray(existingAttachments) && existingAttachments.length > 0;
+                
+                return (
+                  <>
+                    {hasExistingAttachments && (
+                      <View style={{ marginBottom: 16 }}>
+                        <Text variant="bodySmall" style={{ marginBottom: 8, fontWeight: '600', color: '#666' }}>
+                          Archivos adjuntos ({existingAttachments.length}):
+                        </Text>
+                        {existingAttachments.map((attachment: any, index: number) => (
+                          <TouchableOpacity
+                            key={index}
+                            onPress={() => handleOpenAttachment(attachment.url, attachment.name || `Archivo ${index + 1}`)}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingVertical: 8,
+                              paddingHorizontal: 12,
+                              backgroundColor: '#f5f5f5',
+                              borderRadius: 6,
+                              marginBottom: 6,
+                              borderWidth: 1,
+                              borderColor: '#e0e0e0',
+                            }}
+                          >
+                            <Text
+                              variant="bodySmall"
+                              style={{
+                                flex: 1,
+                                color: '#1976d2',
+                                textDecorationLine: 'underline',
+                              }}
+                              numberOfLines={1}
+                            >
+                              📎 {attachment.name || `Archivo ${index + 1}`}
+                            </Text>
+                            <Text
+                              variant="bodySmall"
+                              style={{
+                                color: '#999',
+                                marginLeft: 8,
+                                fontSize: 10,
+                              }}
+                            >
+                              👁️ Ver
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                    
+                    {!hasExistingAttachments && (
+                      <Text variant="bodySmall" style={{ marginBottom: 12, color: '#666' }}>
+                        Esta tarea requiere al menos un archivo adjunto para poder marcarse como completada.
+                      </Text>
+                    )}
+                  </>
+                );
+              })()}
+
+              <Text variant="bodySmall" style={{ marginBottom: 8, marginTop: 8, fontWeight: '600', color: '#666' }}>
+                Agregar nuevo archivo:
               </Text>
 
               <Button
@@ -542,7 +761,7 @@ export default function TaskListScreen({ navigation }: Props) {
               </Button>
 
               {selectedAttachment && (
-                <Text variant="bodySmall" style={{ marginBottom: 4 }}>
+                <Text variant="bodySmall" style={{ marginBottom: 4, color: '#1976d2' }}>
                   Seleccionado: {selectedAttachment.name}
                 </Text>
               )}
@@ -554,16 +773,20 @@ export default function TaskListScreen({ navigation }: Props) {
               )}
             </Dialog.Content>
             <Dialog.Actions>
-              <Button onPress={() => setAttachmentTask(null)} disabled={attachmentUploading}>
-                Cancelar
+              <Button onPress={() => {
+                setAttachmentTask(null);
+                setSelectedAttachment(null);
+                setAttachmentError(null);
+              }} disabled={attachmentUploading}>
+                Cerrar
               </Button>
               <Button
                 mode="contained"
-                onPress={handleUploadAttachmentAndComplete}
+                onPress={handleUploadAttachment}
                 loading={attachmentUploading}
                 disabled={attachmentUploading || !selectedAttachment}
               >
-                Adjuntar y completar
+                Adjuntar
               </Button>
             </Dialog.Actions>
           </Dialog>

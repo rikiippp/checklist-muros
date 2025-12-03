@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, initializeAuth, type Auth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 import { firebaseConfig } from './firebaseConfig.ts';
 
 // Carga perezosa de dependencias para evitar errores de tipos en RN
@@ -31,4 +30,3 @@ try {
 
 export { auth };
 export const db = getFirestore(app);
-export const storage = getStorage(app);
