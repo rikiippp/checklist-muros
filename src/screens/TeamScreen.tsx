@@ -114,12 +114,14 @@ export default function TeamScreen({ navigation }: Props) {
           participants: data.participants || [],
         };
 
-        // Filtrar tareas donde el usuario es participante o asignado
-        const isParticipant = task.participants?.includes(selectedMemberForStats.uid) || false;
+        // Filtrar SOLO tareas asignadas específicamente a esta persona
+        // NO incluir tareas "para todos" (forAll)
         const isAssignee = task.assigneeUid === selectedMemberForStats.uid || false;
+        const isParticipant = task.participants?.includes(selectedMemberForStats.uid) || false;
         const isForAll = task.forAll === true;
 
-        if (isParticipant || isAssignee || isForAll) {
+        // Solo incluir si está asignada específicamente a esta persona (no forAll)
+        if ((isAssignee || isParticipant) && !isForAll) {
           tasks.push(task);
         }
       });
@@ -367,7 +369,7 @@ export default function TeamScreen({ navigation }: Props) {
                     </>
                   )}
 
-                  {/* Tareas completadas */}
+                  {/* Tareas completadas - MOSTRAR TODAS */}
                   <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: 'bold', color: '#43a047' }}>
                     Tareas completadas ({stats.completed})
                   </Text>
@@ -377,18 +379,13 @@ export default function TeamScreen({ navigation }: Props) {
                     </Text>
                   ) : (
                     <View>
-                      {stats.completedTasks.slice(0, 10).map((task) => (
+                      {stats.completedTasks.map((task) => (
                         <View key={task.id} style={styles.taskItem}>
                           <Text variant="bodyMedium" style={{ fontWeight: '500', color: '#43a047' }}>
                             • {task.title}
                           </Text>
                         </View>
                       ))}
-                      {stats.completedTasks.length > 10 && (
-                        <Text variant="bodySmall" style={{ color: '#666', marginTop: 8, fontStyle: 'italic' }}>
-                          ...y {stats.completedTasks.length - 10} más
-                        </Text>
-                      )}
                     </View>
                   )}
                 </ScrollView>

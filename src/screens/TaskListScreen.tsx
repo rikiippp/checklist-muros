@@ -38,8 +38,7 @@ export default function TaskListScreen({ navigation }: Props) {
   const [userName, setUserName] = useState<string>('');
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [completingTask, setCompletingTask] = useState<Task | null>(null);
-  const [completedTasksCount, setCompletedTasksCount] = useState<number>(0);
-  
+
   // Filtros
   const [filterPriority, setFilterPriority] = useState<string | null>(null);
   const [filterPerson, setFilterPerson] = useState<string | null>(null);
@@ -100,33 +99,9 @@ export default function TaskListScreen({ navigation }: Props) {
       }
     });
 
-    // Contar tareas completadas del usuario
-    const qCompleted = query(
-      collection(db, 'tasks'),
-      where('companyId', '==', COMPANY_ID),
-      where('done', '==', true),
-      orderBy('createdAt', 'desc')
-    );
-    const unsubCompleted = onSnapshot(qCompleted, (snap) => {
-      let count = 0;
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        // Solo contar tareas donde el usuario es participante
-        if (Array.isArray(data.participants)) {
-          if (user && data.participants.includes(user.uid)) {
-            count++;
-          }
-        } else {
-          // Compatibilidad: si no hay participants, contar todas
-          count++;
-        }
-      });
-      setCompletedTasksCount(count);
-    });
-
     // Si hay una tarea siendo completada, mantenerla en la lista hasta que termine el delay
     // (esto se maneja en el estado completingTaskId y en renderItem)
-    return () => { unsub(); unsubUsers(); unsubCompleted(); };
+    return () => { unsub(); unsubUsers(); };
   }, [user, navigation]);
 
   const toggleDone = async (task: Task) => {
@@ -330,7 +305,6 @@ export default function TaskListScreen({ navigation }: Props) {
           <IconButtonWithFeedback
             icon="check-circle"
             onPress={() => navigation.navigate('CompletedTasks')}
-            badge={completedTasksCount > 0 ? completedTasksCount : undefined}
           />
           <IconButtonWithFeedback
             icon="logout"
@@ -488,7 +462,7 @@ export default function TaskListScreen({ navigation }: Props) {
 }
 
 // Componente para botones con efecto hover/press en naranja
-function IconButtonWithFeedback({ icon, onPress, badge }: { icon: string; onPress: () => void; badge?: number }) {
+function IconButtonWithFeedback({ icon, onPress }: { icon: string; onPress: () => void }) {
   const [pressed, setPressed] = React.useState(false);
 
   return (
@@ -504,14 +478,7 @@ function IconButtonWithFeedback({ icon, onPress, badge }: { icon: string; onPres
       ]}
       activeOpacity={0.7}
     >
-      <View style={{ position: 'relative' }}>
-        <Appbar.Action icon={icon} color={pressed ? BRAND_COLORS.primary : undefined} />
-        {badge !== undefined && badge > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
-          </View>
-        )}
-      </View>
+      <Appbar.Action icon={icon} color={pressed ? BRAND_COLORS.primary : undefined} />
     </TouchableOpacity>
   );
 }
@@ -553,25 +520,6 @@ const styles = StyleSheet.create({
   filterChip: {
     marginRight: 8,
     marginBottom: 8,
-  },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: BRAND_COLORS.red,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: 'bold',
   },
 });
 

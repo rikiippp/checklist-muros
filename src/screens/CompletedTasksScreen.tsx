@@ -89,7 +89,7 @@ export default function CompletedTasksScreen({ navigation }: Props) {
       createdAt={item.createdAt}
       dueDate={(item as any).dueDate}
       assignedToLabel={(item as any).forAll ? 'Todos' : (item.assigneeUid ? (userMap[item.assigneeUid]?.name || userMap[item.assigneeUid]?.email || 'Asignado') : '')}
-      canDelete={(userRole === 'admin') || (user && item.createdBy === (user as any).uid && !(item as any).forAll)}
+      canDelete={(userRole === 'admin') || (user && item.createdBy === (user as any).uid && !(item as any).forAll) || undefined}
       onToggleDone={() => toggleDone(item)}
       onDelete={() => removeTask(item)}
     />
