@@ -28,3 +28,9 @@ Thumbs.db
 
 # ARCHIVO FANTASMA
 NUL
+
+# Guías específicas (no necesarias en el repo público)
+ANALISIS_Y_MEJORAS.md
+GUIA_DOMINIO_PERSONALIZADO.md
+GUIA_PERSONALIZACION_EMAILS.md
+GUIA_TEST_NOTIFICACIONES.md
