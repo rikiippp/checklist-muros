@@ -75,7 +75,7 @@ export default function TaskListScreen({ navigation }: Props) {
       where('done', '==', false),
       orderBy('createdAt', 'desc')
     );
-    const unsub = onSnapshot(q, async (snap) => {
+    const unsub = onSnapshot(q, (snap) => {
       const items: Task[] = [];
       snap.forEach((d) => {
         const data = d.data() as any;
@@ -92,18 +92,16 @@ export default function TaskListScreen({ navigation }: Props) {
 
       // Programar notificaciones para todas las tareas pendientes con fecha límite
       // (solo para las tareas que el usuario puede ver)
-      for (const task of items) {
+      items.forEach((task) => {
         if (!task.done && task.dueDate) {
-          try {
-            await scheduleNotificationsForTask(task.id, task.title, task.dueDate, false);
-          } catch (error) {
-            // Silenciar errores de notificaciones, no bloquear el flujo
+          // Ejecutar en segundo plano, sin bloquear el render ni la actualización de estado
+          scheduleNotificationsForTask(task.id, task.title, task.dueDate, false).catch((error) => {
             if (__DEV__) {
               console.warn(`Error al programar notificaciones para tarea ${task.id}:`, error);
             }
-          }
+          });
         }
-      }
+      });
     });
 
     // Si hay una tarea siendo completada, mantenerla en la lista hasta que termine el delay

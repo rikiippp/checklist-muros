@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CheckListMuros",
+    "name": "Tareas MUROS",
     "slug": "checklist-muros",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -28,7 +28,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/favIcon.png",
           "color": "#ffffff",
           "sounds": [],
           "mode": "production"

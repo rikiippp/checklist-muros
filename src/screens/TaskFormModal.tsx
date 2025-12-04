@@ -58,7 +58,14 @@ export default function TaskFormModal({ navigation }: Props) {
         assigneeUid = selectedUid;
       }
 
-      const dueDateTimestamp = dueDate ? Timestamp.fromDate(dueDate) : null;
+      // Normalizar la fecha límite para evitar problemas de huso horario.
+      // Guardamos la fecha siempre al mediodía local para que nunca "se corra" al día anterior.
+      let dueDateTimestamp: Timestamp | null = null;
+      if (dueDate) {
+        const normalized = new Date(dueDate);
+        normalized.setHours(12, 0, 0, 0); // 12:00 local
+        dueDateTimestamp = Timestamp.fromDate(normalized);
+      }
 
       const taskRef = await addDoc(collection(db, 'tasks'), {
         title: title.trim(),
@@ -75,15 +82,6 @@ export default function TaskFormModal({ navigation }: Props) {
         forAll,
         requiresAttachment,
       });
-
-      // Programar notificaciones de fecha límite si hay dueDate
-      if (dueDateTimestamp) {
-        try {
-          await scheduleNotificationsForTask(taskRef.id, title.trim(), dueDateTimestamp, false);
-        } catch (error) {
-          console.warn('Error al programar notificaciones de fecha límite:', error);
-        }
-      }
 
       // Notificaciones inmediatas: enviarlas en segundo plano para no bloquear la creación
       (async () => {

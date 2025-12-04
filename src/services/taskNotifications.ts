@@ -45,7 +45,7 @@ export async function scheduleTaskDeadlineNotifications(
 
     const notifications: Notifications.NotificationRequestInput[] = [];
 
-    // Calcular fechas
+    // Calcular fechas (usando solo la parte de fecha, ignorando horas anteriores)
     const twoDaysBefore = new Date(deadlineDate);
     twoDaysBefore.setDate(twoDaysBefore.getDate() - 2);
     twoDaysBefore.setHours(9, 0, 0, 0); // 9:00 AM
@@ -134,11 +134,13 @@ export async function cancelTaskNotifications(taskId: string): Promise<void> {
   try {
     // Obtener todas las notificaciones programadas
     const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
-    
-    // Filtrar las que pertenecen a esta tarea
-    const taskNotifications = scheduledNotifications.filter(
-      (notification) => notification.identifier.startsWith(`task-${taskId}-`)
-    );
+
+    // Filtrar las que pertenecen a esta tarea usando el campo data.taskId
+    const taskNotifications = scheduledNotifications.filter((notification) => {
+      // En algunas versiones, el objeto puede no tener data, por eso los chequeos seguros
+      const data: any = (notification as any)?.content?.data;
+      return data && data.taskId === taskId;
+    });
 
     // Cancelar cada notificación
     for (const notification of taskNotifications) {
